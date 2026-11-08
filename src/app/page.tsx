@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Status = "paid" | "review" | "revision" | "locked";
 type Milestone = { id: number; label: string; title: string; amount: number; status: Status; detail: string; paymentState: "captured" | "pending" | "blocked"; paypalOrderId?: string };
@@ -13,6 +13,12 @@ const seed: Milestone[] = [
 export default function Home() {
   const [milestones, setMilestones] = useState(seed); const [activeId, setActiveId] = useState(2); const [notice, setNotice] = useState("Milestone 2 is ready for your review."); const [scope, setScope] = useState(false); const [paymentBusy, setPaymentBusy] = useState(false); const [role, setRole] = useState<"owner" | "provider">("owner"); const [createPact, setCreatePact] = useState(false);
   const active = milestones.find((m) => m.id === activeId) ?? milestones[1]; const paid = useMemo(() => milestones.filter((m) => m.status === "paid").reduce((a, m) => a + m.amount, 0), [milestones]);
+  useEffect(() => {
+    if (!scope) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setScope(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [scope]);
   const update = (status: Status, detail: string, payment?: Pick<Milestone, "paymentState" | "paypalOrderId">) => setMilestones((xs) => xs.map((m) => m.id === activeId ? { ...m, status, detail, ...payment } : m));
   const approve = async () => { if (paymentBusy) return; setPaymentBusy(true); try { const idempotencyKey = `pact-${active.id}-${Date.now()}`; const order = await fetch("/api/paypal/order", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ amount: active.amount, currency: "USD" }) }).then((response) => response.json()); if (!order.orderId) throw new Error(order.error ?? "Unable to create payment order."); const capture = await fetch(`/api/paypal/order/${order.orderId}/capture`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }).then((response) => response.json()); if (capture.status !== "COMPLETED") throw new Error(capture.error ?? "Payment is still pending."); update("paid", `Owner approved. ${capture.mode === "paypal-sandbox" ? "PayPal sandbox capture completed." : "Demo payment state updated."}`, { paymentState: "captured", paypalOrderId: order.orderId }); setNotice(capture.mode === "paypal-sandbox" ? `$${active.amount} captured in PayPal sandbox. Order ${order.orderId}.` : `Demo payment state updated for $${active.amount}. Add PayPal sandbox credentials to capture for real.`); setActiveId(Math.min(activeId + 1, 4)); } catch (error) { setNotice(error instanceof Error ? error.message : "Payment could not be completed."); } finally { setPaymentBusy(false); } };
   const revise = () => { update("revision", "Revision requested: add the missing accessibility lockup."); setNotice("Revision requested. Payment remains blocked until evidence is resubmitted."); };
