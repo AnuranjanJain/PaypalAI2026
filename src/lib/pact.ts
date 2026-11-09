@@ -35,22 +35,29 @@ function parseProviderResult(value: unknown, input: MilestoneInput): Verificatio
   return { eligible: result.eligible, confidence: result.confidence, passedCriteria: result.passedCriteria, missingItems: result.missingItems, scopeFlags: result.scopeFlags, summary: result.summary || `${input.title} was reviewed.` };
 }
 
-/** Optional OpenAI-compatible provider boundary. Secrets stay server-side and failures use the safe demo result. */
+function extractResponseText(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown }> }> };
+  if (typeof value.output_text === "string") return value.output_text;
+  const text = value.output?.flatMap((item) => item.content ?? []).map((item) => item.text).find((item): item is string => typeof item === "string");
+  return text ?? null;
+}
+
+/** Optional Responses API provider boundary. Secrets stay server-side and failures use the safe demo result. */
 export async function verifyMilestoneWithProvider(input: MilestoneInput): Promise<VerificationResult | null> {
-  const endpoint = process.env.AI_API_URL;
-  const apiKey = process.env.AI_API_KEY;
+  const endpoint = process.env.AI_API_URL ?? "https://api.meta.ai/v1/responses";
+  const apiKey = process.env.AI_API_KEY ?? process.env.MODEL_API_KEY;
   if (!endpoint || !apiKey) return null;
   try {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: process.env.AI_MODEL ?? "pact-verifier", temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "system", content: "Return only JSON matching VerificationResult: eligible boolean, confidence number 0..1, passedCriteria string[], missingItems string[], scopeFlags string[], summary string." }, { role: "user", content: JSON.stringify(input) }] }),
+      body: JSON.stringify({ model: process.env.AI_MODEL ?? "muse-wonder-1.0", input: [{ role: "user", content: [{ type: "input_text", text: `Return only valid JSON matching VerificationResult with eligible boolean, confidence number 0..1, passedCriteria string[], missingItems string[], scopeFlags string[], and summary string. Review this milestone:\n${JSON.stringify(input)}` }] }], stream: false }),
       signal: AbortSignal.timeout(10000),
       cache: "no-store",
     });
     if (!response.ok) return null;
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = payload.choices?.[0]?.message?.content;
+    const content = extractResponseText(await response.json());
     if (!content) return null;
     return parseProviderResult(JSON.parse(content), input);
   } catch {

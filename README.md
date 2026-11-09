@@ -12,9 +12,10 @@ The current browser experience is a deterministic seeded demo. Approval states i
 2. Select the 50% milestone, which is waiting for owner review.
 3. Choose **Request revision** to demonstrate a failed second verification step. Payment remains blocked.
 4. Choose **Resubmit evidence** to return the milestone to review.
-5. Choose **Approve & pay $200** to call the payment adapter. With no credentials it returns an explicit demo fallback; with sandbox credentials it creates and captures a PayPal order.
-6. Switch to **Provider** to see the evidence checklist and resubmission path.
-7. Switch back to **Owner**, choose **Request change**, and review the AI-detected out-of-scope mobile-app change order.
+5. Choose **Approve & pay $200** to create a PayPal order. With no credentials it returns an explicit demo fallback; with sandbox credentials it opens a PayPal approval state.
+6. Choose **Open PayPal sandbox approval**, complete buyer approval in the sandbox, return to Pact, and choose **I approved in PayPal — capture payment**.
+7. Switch to **Provider** to see the evidence checklist and resubmission path.
+8. Switch back to **Owner**, choose **Request change**, and review the AI-detected out-of-scope mobile-app change order.
 
 The intended product rule is: **the Delivery Agent checks completion; the Project Owner confirms acceptance; PayPal moves only the approved milestone amount.**
 
