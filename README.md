@@ -4,7 +4,7 @@
 
 PayPal Pact is a PayPal AI Hackathon prototype for milestone-controlled payments. A project owner reviews a four-stage Pact, a Delivery Agent checks objective evidence, and the owner accepts or requests a revision before the corresponding progress payment is released.
 
-The current browser experience is a deterministic seeded demo. It is designed to make the complete product story reviewable without PayPal credentials: verification, revision, approval, progressive payment state, owner/provider views, and scope-change handling are all available from the dashboard. The repository also contains server-side PayPal order/capture and Pact verification routes.
+The current browser experience is a deterministic seeded demo. Approval states include creating an order, capturing a payment, a pending/non-completed response, local cancellation of the in-flight attempt, and an error with retry. It is designed to make the complete product story reviewable without PayPal credentials: verification, revision, approval, progressive payment state, owner/provider views, and scope-change handling are all available from the dashboard. The repository also contains server-side PayPal order/capture and Pact verification routes.
 
 ## Demo workflow
 
