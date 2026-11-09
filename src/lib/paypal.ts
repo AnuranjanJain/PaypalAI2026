@@ -21,6 +21,11 @@ export function parseRedirectUrl(value: unknown): string | null {
     const url = new URL(value);
     const localHttp = url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
     if (url.protocol !== "https:" && !localHttp) return null;
+    const configuredOrigin = process.env.APP_URL;
+    if (configuredOrigin) {
+      const allowed = new URL(configuredOrigin);
+      if (url.origin !== allowed.origin && !localHttp) return null;
+    }
     return url.toString();
   } catch { return null; }
 }
