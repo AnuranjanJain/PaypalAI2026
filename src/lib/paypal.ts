@@ -14,6 +14,17 @@ export function parseCurrency(value: unknown): string | null {
   return SUPPORTED_CURRENCIES.has(currency) ? currency : null;
 }
 
+/** PayPal return/cancel URLs must be absolute and safe to send to the provider. */
+export function parseRedirectUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    const localHttp = url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    if (url.protocol !== "https:" && !localHttp) return null;
+    return url.toString();
+  } catch { return null; }
+}
+
 /** Use a caller idempotency key when supplied so retries cannot create duplicate orders. */
 export function getRequestId(request: Request, prefix: string): string {
   const supplied = request.headers.get("Idempotency-Key")?.trim();

@@ -4,7 +4,7 @@
 
 PayPal Pact is a PayPal AI Hackathon prototype for milestone-controlled payments. A project owner reviews a four-stage Pact, a Delivery Agent checks objective evidence, and the owner accepts or requests a revision before the corresponding progress payment is released.
 
-The current browser experience is a deterministic seeded demo. It is designed to make the complete product story reviewable without PayPal credentials: verification, revision, approval, progressive payment state, and scope-change handling are all available from the dashboard. The repository also contains server-side PayPal order/capture and Pact verification routes that define the next integration boundary.
+The current browser experience is a deterministic seeded demo. It is designed to make the complete product story reviewable without PayPal credentials: verification, revision, approval, progressive payment state, owner/provider views, and scope-change handling are all available from the dashboard. The repository also contains server-side PayPal order/capture and Pact verification routes.
 
 ## Demo workflow
 
@@ -12,8 +12,9 @@ The current browser experience is a deterministic seeded demo. It is designed to
 2. Select the 50% milestone, which is waiting for owner review.
 3. Choose **Request revision** to demonstrate a failed second verification step. Payment remains blocked.
 4. Choose **Resubmit evidence** to return the milestone to review.
-5. Choose **Approve & pay $200** to demonstrate the progressive payment state update.
-6. Choose **Request change** and review the AI-detected out-of-scope mobile-app change order.
+5. Choose **Approve & pay $200** to call the payment adapter. With no credentials it returns an explicit demo fallback; with sandbox credentials it creates and captures a PayPal order.
+6. Switch to **Provider** to see the evidence checklist and resubmission path.
+7. Switch back to **Owner**, choose **Request change**, and review the AI-detected out-of-scope mobile-app change order.
 
 The intended product rule is: **the Delivery Agent checks completion; the Project Owner confirms acceptance; PayPal moves only the approved milestone amount.**
 
@@ -26,8 +27,9 @@ The prototype is designed for the hackathon requirements: a working web experien
 ## Current integration boundaries and limitations
 
 - The dashboard currently uses seeded client-side state so the demo is repeatable without credentials.
-- The visible approval interaction currently demonstrates the payment state locally; it should be connected to the PayPal order and capture routes before claiming a live sandbox transaction in a submission video.
+- The visible approval interaction calls the PayPal order and capture routes. Without credentials those routes return a labelled demo fallback; with credentials they call PayPal Sandbox.
 - `POST /api/paypal/order` creates a PayPal sandbox order when credentials are configured and returns a deterministic demo fallback otherwise. `POST /api/paypal/order/[orderId]/capture` captures a configured sandbox order or completes a demo order.
+- PayPal Orders lifecycle: create the order (`CREATED`) with `POST /api/paypal/order`, send the user to the returned PayPal approval link, receive the user at the validated `returnUrl` or `cancelUrl`, then capture the approved order with `POST /api/paypal/order/[orderId]/capture`. Preserve the returned PayPal links and reconcile the final state from webhooks in production. Redirect URLs must be HTTPS (localhost HTTP is allowed for local development).
 - `POST /api/pact/verify` currently uses the deterministic verifier in `src/lib/pact.ts`. It is provider-ready, but no external model call is included in the current repository.
 - The prototype does not claim legal escrow, autonomous production settlement, production fraud detection, or a legally binding contract. The correct description is **sandbox milestone-controlled settlement**.
 - Persistence, authenticated owner/provider roles, evidence uploads, webhook reconciliation, idempotency storage, and production AI adapters are planned integration work.
