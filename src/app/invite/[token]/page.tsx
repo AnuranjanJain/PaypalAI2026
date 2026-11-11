@@ -49,13 +49,15 @@ export default async function AcceptInvitationPage({
               {actionError === "setup" && <p className="pact-form-error" role="alert">Pact acceptance is not enabled in this Supabase project yet. Apply the latest migration, then try again.</p>}
               {actionError === "database" && <p className="pact-form-error" role="alert">Pact acceptance failed while saving access. Try again once, then ask the owner for a new link if it persists.</p>}
               <AcceptInvitationForm action={acceptPactInvitation.bind(null, token)} />
+              {(actionError === "wrong-email" || actionError === "wrong-account") && <form action={signOutForInvitation.bind(null, token)}><button className="pact-secondary" type="submit">Sign out and use another account</button></form>}
             </>
           ) : (
             <>
               <p className="pact-eyebrow">INVITATION UNAVAILABLE</p>
               <h1>This link cannot be accepted</h1>
-              <p className="pact-intro">The link may have expired, already been used, or been created for another email address. Sign in with the invited email or ask the owner to create a new link.</p>
+              <p className="pact-intro">The link may have expired, already been used, or been created for another email address. You are signed in as <strong>{user.email}</strong>. Sign in with the invited email or ask the owner to create a new link.</p>
               {error && <p className="pact-form-error" role="alert">Invitation details could not be loaded.</p>}
+              {actionError === "wrong-email" && <p className="pact-form-error" role="alert">This invitation belongs to a different email address. Sign out and sign in with the invited provider account.</p>}
               <div className="pact-detail-actions">
                 <Link className="pact-secondary" href="/workspace">Open your workspaces</Link>
                 <form action={signOutForInvitation.bind(null, token)}><button className="pact-secondary" type="submit">Sign out and use another account</button></form>
