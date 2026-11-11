@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { createPactInvitation } from "./actions";
 import CopyInviteLink from "./CopyInviteLink";
 import InviteProviderForm from "./InviteProviderForm";
@@ -45,10 +44,7 @@ export default async function InviteProviderPage({
   if (error) throw new Error("Unable to load Pact.");
   if (!pact) notFound();
   const createInvitation = createPactInvitation.bind(null, workspaceId, pactId);
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
-  let appOrigin = host ? `${protocol}://${host}` : "";
+  let appOrigin = "";
   try {
     if (process.env.APP_URL) appOrigin = new URL(process.env.APP_URL).origin;
   } catch {
