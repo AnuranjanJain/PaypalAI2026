@@ -37,6 +37,7 @@ The prototype is designed for the hackathon requirements: a working web experien
 - `POST /api/pact/verify` uses a validated structured AI Responses API adapter when `AI_API_KEY` (or `MODEL_API_KEY`) and `AI_API_URL` are configured, and falls back to the deterministic verifier when the provider is unavailable or returns invalid output.
 - The prototype does not claim legal escrow, autonomous production settlement, production fraud detection, or a legally binding contract. The correct description is **sandbox milestone-controlled settlement**.
 - Authenticated accounts, workspace membership, Pact drafts, draft editing, provider invitations, evidence notes and links, owner review, and payment events use Supabase. Private file uploads and voice recordings are not enabled in this release; the UI must not imply that they were processed. Any capability not configured in the current Supabase or PayPal project is shown as unavailable or pending. The walkthrough's evidence and payment state is illustrative and must not be used to protect real transactions.
+- `src/proxy.ts` refreshes Supabase browser sessions at the request boundary; page, action, and API authorization checks still run independently.
 
 ## Run locally
 
