@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { workspaceRoleLabel } from "@/lib/workspace-role";
+import mobileNavStyles from "./WorkspaceMobileNav.module.css";
 
 export async function signOut() {
   "use server";
@@ -44,7 +45,7 @@ export default function WorkspaceShell({ workspaceId, workspaceName, role, email
         </nav>
         <div className="workspace-sidebar-footer"><div className="workspace-mini-logo"><Image src="/pact-supplied-icon.png" alt="" width={24} height={24} /><span><strong>PayPal Pact</strong><small>Progressive settlement</small></span></div><form action={signOut}><button className="workspace-signout" type="submit">Sign out</button></form></div>
       </aside>
-      <section className="workspace-main"><div className="workspace-mobile-nav"><Link href="/workspace?manage=1">All workspaces</Link>{workspaceId && <Link href={`${base}?view=settings`}>Settings</Link>}</div>{children}</section>
+      <section className="workspace-main"><nav className={mobileNavStyles.nav} aria-label="Workspace navigation"><Link className={`${mobileNavStyles.link} ${active === "workspaces" ? mobileNavStyles.active : ""}`} href="/workspace?manage=1">All workspaces</Link>{workspaceId && <><Link className={`${mobileNavStyles.link} ${active === "overview" ? mobileNavStyles.active : ""}`} href={base}>Overview</Link><Link className={`${mobileNavStyles.link} ${active === "pacts" ? mobileNavStyles.active : ""}`} href={`${base}?view=pacts`}>My Pacts</Link><Link className={`${mobileNavStyles.link} ${active === "payments" ? mobileNavStyles.active : ""}`} href={`${base}?view=payments`}>Payments</Link><Link className={`${mobileNavStyles.link} ${active === "settings" ? mobileNavStyles.active : ""}`} href={`${base}?view=settings`}>Settings</Link></>}</nav>{children}</section>
     </div>
     <span className="workspace-account-email" aria-hidden="true">{email ?? ""}</span>
   </main>;
