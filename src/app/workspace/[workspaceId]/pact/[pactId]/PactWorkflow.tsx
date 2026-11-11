@@ -24,7 +24,7 @@ function EvidenceForm({ workspaceId, pactId, milestoneId }: { workspaceId: strin
   </form>;
 }
 
-function ReviewForm({ workspaceId, pactId, submission }: { workspaceId: string; pactId: string; submission: Submission }) {
+function ReviewForm({ workspaceId, pactId, submission, verification }: { workspaceId: string; pactId: string; submission: Submission; verification?: PactVerification }) {
   const action = reviewPactSubmission.bind(null, workspaceId, pactId);
   const [state, formAction, pending] = useActionState<WorkflowActionState, FormData>(action, {});
   const router = useRouter();
@@ -34,8 +34,9 @@ function ReviewForm({ workspaceId, pactId, submission }: { workspaceId: string; 
     <label>Review note <span className="pact-field-hint">optional</span><textarea name="note" rows={2} placeholder="Tell the provider what to keep or change." /></label>
     {state.error && <p className="pact-form-error" role="alert">{state.error}</p>}
     {state.success && <p className="pact-form-success" role="status">{state.success}</p>}
+    {!verification?.eligible && <p className="pact-field-hint">Run an eligible Delivery Agent check before approving. You can still request a revision.</p>}
     <div className="pact-review-actions">
-      <button className="pact-primary" name="decision" value="approved" type="submit" disabled={pending}>{pending ? "Saving…" : "Approve milestone"}</button>
+      <button className="pact-primary" name="decision" value="approved" type="submit" disabled={pending || !verification?.eligible}>{pending ? "Saving…" : "Approve milestone"}</button>
       <button className="pact-secondary" name="decision" value="revision_requested" type="submit" disabled={pending}>Request revision</button>
     </div>
   </form>;
@@ -45,6 +46,7 @@ function EvidenceCheck({ pactId, milestoneId, submissionId, existing }: { pactId
   const [result, setResult] = useState<PactVerification | undefined>(existing);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const router = useRouter();
   async function runCheck() {
     setPending(true); setMessage("");
     try {
@@ -52,6 +54,7 @@ function EvidenceCheck({ pactId, milestoneId, submissionId, existing }: { pactId
       const data = await response.json();
       if (!response.ok || !data.verification) throw new Error(data.error ?? "Evidence check could not be completed.");
       setResult({ ...data.verification, mode: data.mode, submission_id: submissionId, created_at: new Date().toISOString() });
+      router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Evidence check could not be completed."); }
     finally { setPending(false); }
   }
@@ -67,10 +70,10 @@ function EvidenceCheck({ pactId, milestoneId, submissionId, existing }: { pactId
 function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { workspaceId: string; pactId: string; milestone: Milestone; existingEvent?: PaymentEvent }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [order, setOrder] = useState<{ orderId: string; approvalUrl?: string; captured?: boolean; payoutStatus?: string } | null>(() => existingEvent && existingEvent.status !== "failed" ? {
+  const [order, setOrder] = useState<{ orderId: string; approvalUrl?: string; captured?: boolean; payoutStatus?: string } | null>(() => existingEvent ? {
     orderId: existingEvent.paypal_order_id,
     approvalUrl: existingEvent.approval_url ?? undefined,
-    captured: ["captured", "payout_pending", "paid_to_provider"].includes(existingEvent.status),
+    captured: ["captured", "payout_pending", "paid_to_provider", "failed"].includes(existingEvent.status),
     payoutStatus: existingEvent.payout_status ?? "not_requested",
   } : null);
   async function createOrder() {
@@ -91,8 +94,9 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
     try {
       const response = await fetch(`/api/pact/payment/order/${order.orderId}/capture`, { method: "POST", headers: { "Idempotency-Key": `capture-${order.orderId}` } });
       const data = await response.json();
+      if (data.status === "FAILED") setOrder(null);
       if (!response.ok || data.status !== "COMPLETED") throw new Error(data.error ?? "PayPal capture is still pending.");
-      setOrder({ ...order, captured: true, payoutStatus: data.payoutStatus ?? "captured" });
+      setOrder({ ...order, captured: true, payoutStatus: data.payoutStatus ?? "not_requested" });
       setMessage(data.payoutMessage ?? "PayPal capture completed. Provider payout remains pending until PayPal Payouts is enabled.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "PayPal capture could not be completed."); }
     finally { setBusy(false); }
@@ -106,7 +110,7 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
       if (!response.ok && data.payoutStatus !== "blocked") throw new Error(data.error ?? "Provider payout could not be requested.");
       const payoutStatus = data.payoutStatus ?? "blocked";
       setOrder({ ...order, payoutStatus });
-      setMessage(data.error ?? (payoutStatus === "paid_to_provider" ? "Provider payout confirmed by PayPal." : payoutStatus === "payout_pending" ? "PayPal accepted the payout request; it is still pending." : "Provider payout is blocked until PayPal Payouts is enabled."));
+      setMessage(data.error ?? (payoutStatus === "paid_to_provider" ? "Provider payout confirmed by PayPal." : payoutStatus === "payout_pending" ? "PayPal accepted the payout request; it is still pending." : payoutStatus === "failed" ? "PayPal reported a failed payout. Retry the provider payout after checking the account." : "Provider payout is blocked until PayPal Payouts is enabled."));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Provider payout could not be requested."); }
     finally { setBusy(false); }
   }
@@ -127,7 +131,7 @@ export default function PactWorkflow({ workspaceId, pactId, isOwner, pactStatus,
     {unavailable ? <div className="pact-form-error" role="status">Evidence storage is not enabled yet. Apply the latest Supabase migration to activate submissions and review.</div> : <ol className="pact-workflow-list">{milestones.map((milestone) => {
       const submission = latest.get(milestone.id);
       const canSubmit = !isOwner && milestone.status !== "approved" && (!submission || submission.status === "revision_requested");
-      return <li key={milestone.id} className="pact-workflow-item"><div className="pact-workflow-heading"><div><strong>{milestone.title}</strong><small>${(milestone.amount_cents / 100).toFixed(2)} · {milestone.status.replaceAll("_", " ")}</small></div>{submission && <span className={`pact-submission-status pact-submission-${submission.status}`}>{submission.status.replaceAll("_", " ")}</span>}</div>{submission && <div className="pact-submission-summary"><p>{submission.notes}</p>{submission.links.length > 0 && <ul>{submission.links.map((link) => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul>}{submission.decision_note && <p className="pact-decision-note">Owner note: {submission.decision_note}</p>}</div>}{canSubmit && <EvidenceForm workspaceId={workspaceId} pactId={pactId} milestoneId={milestone.id} />}{isOwner && submission?.status === "submitted" && <><EvidenceCheck pactId={pactId} milestoneId={milestone.id} submissionId={submission.id} existing={verificationMap.get(submission.id)} /><ReviewForm workspaceId={workspaceId} pactId={pactId} submission={submission} /></>}{isOwner && milestone.status === "approved" && <CheckoutButton workspaceId={workspaceId} pactId={pactId} milestone={milestone} existingEvent={payments.get(milestone.id)} />}</li>;
+      return <li key={milestone.id} className="pact-workflow-item"><div className="pact-workflow-heading"><div><strong>{milestone.title}</strong><small>${(milestone.amount_cents / 100).toFixed(2)} · {milestone.status.replaceAll("_", " ")}</small></div>{submission && <span className={`pact-submission-status pact-submission-${submission.status}`}>{submission.status.replaceAll("_", " ")}</span>}</div>{submission && <div className="pact-submission-summary"><p>{submission.notes}</p>{submission.links.length > 0 && <ul>{submission.links.map((link) => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul>}{submission.decision_note && <p className="pact-decision-note">Owner note: {submission.decision_note}</p>}</div>}{canSubmit && <EvidenceForm workspaceId={workspaceId} pactId={pactId} milestoneId={milestone.id} />}{isOwner && submission?.status === "submitted" && <><EvidenceCheck pactId={pactId} milestoneId={milestone.id} submissionId={submission.id} existing={verificationMap.get(submission.id)} /><ReviewForm workspaceId={workspaceId} pactId={pactId} submission={submission} verification={verificationMap.get(submission.id)} /></>}{isOwner && milestone.status === "approved" && <CheckoutButton workspaceId={workspaceId} pactId={pactId} milestone={milestone} existingEvent={payments.get(milestone.id)} />}</li>;
     })}</ol>}
   </section>;
 }

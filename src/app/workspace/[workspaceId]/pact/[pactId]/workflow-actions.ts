@@ -71,6 +71,21 @@ export async function reviewPactSubmission(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/workspace/${workspaceId}/pact/${pactId}`)}`);
+  if (decision === "approved") {
+    const { data: verification, error: verificationError } = await supabase
+      .from("pact_verification_results")
+      .select("eligible")
+      .eq("submission_id", submissionId)
+      .maybeSingle();
+    if (verificationError) {
+      const message = verificationError.message.toLowerCase();
+      if (message.includes("does not exist") || message.includes("schema cache") || verificationError.code === "PGRST202") {
+        return { error: "Verification storage is not enabled. Apply the latest Supabase migration before approving." };
+      }
+      return { error: "The evidence check could not be loaded. Run it again, then retry approval." };
+    }
+    if (!verification?.eligible) return { error: "Run an eligible evidence check before approving this milestone." };
+  }
   const { error } = await supabase.rpc("review_pact_submission", {
     target_submission: submissionId,
     decision,

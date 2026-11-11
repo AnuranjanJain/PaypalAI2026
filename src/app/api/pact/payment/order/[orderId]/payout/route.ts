@@ -43,7 +43,7 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
     }
     return paypalError(404, error?.message?.includes("Capture") ? error.message : "Payment order is not ready for provider payout.");
   }
-  if (details.payout_status === "paid_to_provider") {
+  if (details.payout_status === "paid_to_provider" || details.status === "paid_to_provider") {
     return NextResponse.json({ orderId, payoutStatus: "paid_to_provider", payoutBatchId: details.payout_batch_id });
   }
 
@@ -77,7 +77,19 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
       }
     }
 
-    if (details.status !== "captured") {
+    if (payoutStatus) {
+      const { error: updateError } = await supabase.rpc("record_pact_payout_status", {
+        target_order_id: orderId,
+        target_status: payoutStatus,
+        target_recipient: details.recipient_email,
+        target_batch_id: payoutBatchId,
+        target_error: payoutStatus === "failed" ? "PayPal reported a failed payout." : null,
+      });
+      if (updateError) return paypalError(502, "PayPal returned a payout result, but the Pact ledger could not be updated.");
+      return NextResponse.json({ orderId, payoutStatus, payoutBatchId });
+    }
+
+    if (details.status !== "captured" && details.status !== "failed") {
       return paypalError(409, "Capture the milestone before requesting a provider payout.");
     }
 

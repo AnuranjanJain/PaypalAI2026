@@ -25,6 +25,11 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
       const reconciliation = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId)}`, { headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" }, cache: "no-store" });
       if (reconciliation.ok) capture = await reconciliation.json() as { status?: string };
     }
+    if (["VOIDED", "CANCELED", "DENIED", "FAILED"].includes(capture.status ?? "")) {
+      const { error: failureError } = await supabase.rpc("mark_pact_payment_failed", { target_order_id: orderId });
+      if (failureError) return paypalError(502, "PayPal canceled the order, but the Pact ledger could not release it for retry.");
+      return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "FAILED", error: "PayPal canceled this order. Start a new checkout for the milestone." }, { status: 409 });
+    }
     if (capture.status !== "COMPLETED") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: capture.status ?? "PENDING" }, { status: captureResponse.ok ? 409 : 502 });
     const { error: ledgerError } = await supabase.rpc("mark_pact_payment_captured", { target_order_id: orderId });
     if (ledgerError) return paypalError(502, "PayPal reports a completed capture, but the Pact ledger could not be updated. Retry reconciliation before treating it as recorded.");
