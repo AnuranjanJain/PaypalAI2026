@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { workspaceRoleLabel } from "@/lib/workspace-role";
 
 export async function signOut() {
   "use server";
@@ -30,7 +31,7 @@ export default function WorkspaceShell({ workspaceId, workspaceName, role, email
     </header>
     <div className="workspace-layout">
       <aside className="workspace-sidebar" aria-label="Workspace navigation">
-        <div className="workspace-context"><span className="workspace-context-label">WORKSPACE</span><strong>{workspaceName ?? "Choose a workspace"}</strong><small>{role ? `${role} access` : "Account management"}</small></div>
+        <div className="workspace-context"><span className="workspace-context-label">WORKSPACE</span><strong>{workspaceName ?? "Choose a workspace"}</strong><small>{role ? `${workspaceRoleLabel(role)} access` : "Account management"}</small></div>
         <nav className="workspace-nav">
           <span className="workspace-nav-label">Workspace</span>
           <Link className={active === "overview" ? "is-active" : ""} href={base}><span aria-hidden="true">⌂</span> Overview</Link>

@@ -1,0 +1,154 @@
+.pathIntro {
+  margin-bottom: 18px;
+}
+
+.pathIntro h2 {
+  margin: 0;
+  color: #213e52;
+  font-size: 17px;
+}
+
+.pathIntro p {
+  max-width: 650px;
+  margin: 6px 0 0;
+  color: #7f919e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pathGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pathCard {
+  display: flex;
+  min-height: 188px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 18px;
+  border: 1px solid #dce8ef;
+  border-radius: 9px;
+  background: #fbfdfe;
+}
+
+.pathCardOwner {
+  border-color: #cfe3f5;
+  background: #f7fbff;
+}
+
+.pathCardProvider {
+  border-color: #d7e9df;
+  background: #f8fcfa;
+}
+
+.roleEyebrow {
+  color: #6b8393;
+  font: 500 9px 'DM Mono', monospace;
+  letter-spacing: .1em;
+}
+
+.pathCard h3 {
+  margin: 12px 0 5px;
+  color: #213e52;
+  font-size: 15px;
+}
+
+.pathCard p {
+  margin: 0;
+  color: #718694;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pathLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 16px;
+  color: #1268b8;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pathCardProvider .pathLink {
+  color: #207957;
+}
+
+.roleSummary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 17px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid #edf1f4;
+  color: #6e8290;
+  font-size: 11px;
+}
+
+.roleSummary strong {
+  color: #31566e;
+}
+
+.roleBadge {
+  display: inline-flex;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: #eef6ff;
+  color: #1268b8;
+  font: 500 9px 'DM Mono', monospace;
+  text-transform: uppercase;
+}
+
+.roleBadgeProvider {
+  background: #eaf8f1;
+  color: #1a865c;
+}
+
+.inviteForm {
+  display: grid;
+  gap: 12px;
+}
+
+.inviteForm label {
+  display: grid;
+  gap: 7px;
+  color: #345267;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inviteForm input {
+  width: 100%;
+  border: 1px solid #cfdde6;
+  border-radius: 6px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #213e52;
+  font: inherit;
+}
+
+.inviteHint {
+  margin: 0;
+  color: #80939f;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 680px) {
+  .pathGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pathCard {
+    min-height: 0;
+  }
+
+  .roleSummary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

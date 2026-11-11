@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
+import { workspaceRoleLabel } from "@/lib/workspace-role";
 import { reviewPactSubmission, submitPactEvidence, type WorkflowActionState } from "./workflow-actions";
 
 type Milestone = { id: string; title: string; position: number; amount_cents: number; status: string };
@@ -143,7 +144,7 @@ export default function PactWorkflow({ workspaceId, pactId, isOwner, pactStatus,
   const verificationMap = useMemo(() => new Map(verifications.map((verification) => [verification.submission_id, verification])), [verifications]);
   if (pactStatus !== "active") return null;
   return <section className="pact-panel pact-workflow" aria-labelledby="workflow-heading">
-    <div className="pact-section-heading"><div><p className="pact-eyebrow">MILESTONE WORKFLOW</p><h2 id="workflow-heading">Evidence, review, and payment</h2></div><span>{isOwner ? "Owner review" : "Provider delivery"}</span></div>
+    <div className="pact-section-heading"><div><p className="pact-eyebrow">MILESTONE WORKFLOW</p><h2 id="workflow-heading">Evidence, review, and payment</h2></div><span>{isOwner ? `${workspaceRoleLabel("owner")} review` : `${workspaceRoleLabel("provider")} delivery`}</span></div>
     {unavailable ? <div className="pact-form-error" role="status">Evidence storage is not enabled yet. Apply the latest Supabase migration to activate submissions and review.</div> : <ol className="pact-workflow-list">{milestones.map((milestone) => {
       const submission = latest.get(milestone.id);
       const canSubmit = !isOwner && milestone.status !== "approved" && (!submission || submission.status === "revision_requested");

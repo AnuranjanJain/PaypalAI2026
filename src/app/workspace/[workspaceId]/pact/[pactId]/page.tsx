@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { workspaceRoleLabel } from "@/lib/workspace-role";
 import PactWorkflow from "./PactWorkflow";
 import "../../../../login/signin.css";
 
@@ -60,7 +61,7 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
                 <h1>{pact.title}</h1>
                 <p className="pact-intro">{pact.brief}</p>
               </div>
-              <span className="pact-role-label">{isOwner ? "Owner view" : "Provider view"}</span>
+              <span className="pact-role-label">{workspaceRoleLabel(isOwner ? "owner" : "provider")} view</span>
             </div>
             <div className="pact-budget"><span>Project budget</span><strong>${(pact.budget_cents / 100).toFixed(2)} USD</strong></div>
             <div className="pact-section-heading"><h2>Milestone schedule</h2><span>{milestones.length} stages</span></div>
