@@ -40,7 +40,16 @@ export async function updatePactDraft(
       amount_cents: milestone.amountCents,
     })),
   });
-  if (error) return { error: "This Pact could not be saved. Drafts can only be edited by their workspace owner before the provider accepts." };
+  if (error) {
+    const databaseMessage = error.message.toLowerCase();
+    if (databaseMessage.includes("record ->>")) {
+      return { error: "The workspace database needs migration 005 before draft editing is available." };
+    }
+    if (databaseMessage.includes("could not find the function") || databaseMessage.includes("pgrst202")) {
+      return { error: "The Pact workflow migrations are incomplete. Run the files in supabase/migrations in filename order." };
+    }
+    return { error: "This Pact could not be saved. Drafts can only be edited by their workspace owner before the provider accepts." };
+  }
 
   redirect(`/workspace/${workspaceId}/pact/${pactId}`);
 }
