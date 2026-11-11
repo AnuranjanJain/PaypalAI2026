@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { hashPactInvitationToken } from "@/lib/pact-invitation";
 import { createClient } from "@/lib/supabase/server";
 import { acceptPactInvitation } from "./actions";
@@ -16,6 +17,7 @@ export default async function AcceptInvitationPage({
 }) {
   const { token } = await params;
   const { error: actionError } = await searchParams;
+  await connection();
   const tokenHash = hashPactInvitationToken(token);
   if (!tokenHash) redirect("/workspace");
 

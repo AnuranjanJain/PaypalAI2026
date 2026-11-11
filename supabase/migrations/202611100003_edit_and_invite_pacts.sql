@@ -187,9 +187,11 @@ begin
   if current_role = 'owner' then raise exception 'Workspace owners cannot join as providers'; end if;
 
   insert into public.workspace_members(workspace_id, user_id, role)
-    values (invitation.workspace_id, auth.uid(), 'provider') on conflict (workspace_id, user_id) do nothing;
+    values (invitation.workspace_id, auth.uid(), 'provider')
+    on conflict on constraint workspace_members_pkey do nothing;
   insert into public.pact_participants(pact_id, user_id)
-    values (invitation.pact_id, auth.uid()) on conflict (pact_id, user_id) do nothing;
+    values (invitation.pact_id, auth.uid())
+    on conflict on constraint pact_participants_pkey do nothing;
   update public.pact_invitations set status = 'accepted', accepted_at = now()
     where token_hash = target_token_hash;
   update public.pacts set status = 'active'

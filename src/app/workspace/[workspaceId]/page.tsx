@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import WorkspaceShell from "../WorkspaceShell";
 import "../../login/signin.css";
@@ -54,6 +55,7 @@ function SettingsView({ workspaceName, role, email, workspaceId, profile }: { wo
 export default async function WorkspaceDetail({ params, searchParams }: { params: Promise<{ workspaceId: string }>; searchParams: Promise<{ error?: string; view?: string }> }) {
   const { workspaceId } = await params;
   const { error: actionError, view = "overview" } = await searchParams;
+  await connection();
   if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) redirect("/workspace");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

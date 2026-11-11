@@ -20,6 +20,17 @@ export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("code")) return;
+
+    // Older Supabase email templates can redirect to the site URL instead of
+    // the callback allowlist entry. Move that one-time code to the exchange route.
+    const callback = new URL("/auth/callback", window.location.origin);
+    callback.search = window.location.search;
+    window.location.replace(callback.toString());
+  }, []);
+
+  useEffect(() => {
     const items = Array.from(document.querySelectorAll<HTMLElement>(".landing-reveal"));
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       items.forEach((item) => item.classList.add("is-visible"));

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createPactInvitation } from "./actions";
 import CopyInviteLink from "./CopyInviteLink";
 import InviteProviderForm from "./InviteProviderForm";
@@ -30,6 +31,7 @@ export default async function InviteProviderPage({
 }) {
   const { workspaceId, pactId } = await params;
   const { link } = await searchParams;
+  await connection();
   if (![workspaceId, pactId].every((id) => /^[0-9a-f-]{36}$/i.test(id))) notFound();
 
   const supabase = await createClient();

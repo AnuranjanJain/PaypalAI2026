@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import WorkspaceShell from "./WorkspaceShell";
 import "../login/signin.css";
@@ -19,6 +20,7 @@ async function createWorkspace(formData: FormData) {
 }
 
 export default async function WorkspacePage({ searchParams }: { searchParams: Promise<{ error?: string; manage?: string }> }) {
+  await connection();
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)) {
     return <main className="signin"><section className="signin-content"><h1>Workspace setup needed</h1><p>Configure Supabase to enable accounts and persistent workspaces.</p></section></main>;
   }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { updatePactDraft } from "./actions";
 import PactEditorForm from "./PactEditorForm";
@@ -9,6 +10,7 @@ export const instant = false;
 
 export default async function EditPactPage({ params }: { params: Promise<{ workspaceId: string; pactId: string }> }) {
   const { workspaceId, pactId } = await params;
+  await connection();
   if (![workspaceId, pactId].every((id) => /^[0-9a-f-]{36}$/i.test(id))) notFound();
 
   const supabase = await createClient();

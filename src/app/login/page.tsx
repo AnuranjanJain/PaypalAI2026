@@ -13,7 +13,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [register, setRegister] = useState(() => searchParams.get("mode") === "signup");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => searchParams.get("error") === "callback" ? "This sign-in link is invalid or expired. Start again." : "");
   const [busy, setBusy] = useState(false);
 
   function nextPath() {
@@ -38,7 +38,21 @@ function LoginForm() {
       const result = register
         ? await client.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } })
         : await client.auth.signInWithPassword({ email, password });
-      if (result.error) { clearNextPath(); setMessage(result.error.message); setBusy(false); }
+      if (result.error) {
+        clearNextPath();
+        if (register && /already registered|already exists/i.test(result.error.message)) {
+          setRegister(false);
+          setMessage("An account already exists for this email. Sign in instead.");
+        } else if (!register && /invalid login credentials/i.test(result.error.message)) {
+          setMessage("We couldn't sign you in. If this is your first visit, switch to Create an account below.");
+        } else {
+          setMessage(result.error.message);
+        }
+        setBusy(false);
+      }
+      else if (register && result.data.user && result.data.user.identities?.length === 0) {
+        clearNextPath(); setRegister(false); setMessage("An account already exists for this email. Sign in instead."); setBusy(false);
+      }
       else if (result.data.session) { const destination = nextPath(); clearNextPath(); router.push(destination); router.refresh(); }
       else { setMessage("Check your email to confirm your account."); setBusy(false); }
     } catch { setMessage("Sign-in is unavailable. Check the Supabase configuration."); setBusy(false); }
