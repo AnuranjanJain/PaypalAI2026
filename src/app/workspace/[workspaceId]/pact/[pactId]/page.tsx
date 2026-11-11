@@ -29,6 +29,10 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
     .select("id, milestone_id, notes, links, status, decision_note, created_at")
     .eq("pact_id", pactId)
     .order("created_at", { ascending: false });
+  const { data: verifications } = await supabase.from("pact_verification_results")
+    .select("submission_id, mode, eligible, confidence, passed_criteria, missing_items, scope_flags, summary, created_at")
+    .eq("pact_id", pactId)
+    .order("created_at", { ascending: false });
 
   const isOwner = membership.role === "owner";
   const { data: paymentEvents } = isOwner ? await supabase.from("pact_payment_events")
@@ -98,6 +102,12 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
           pactStatus={pact.status}
           milestones={milestones}
           paymentEvents={paymentEvents ?? []}
+          verifications={(verifications ?? []).map((verification) => ({
+            ...verification,
+            passed_criteria: Array.isArray(verification.passed_criteria) ? verification.passed_criteria : [],
+            missing_items: Array.isArray(verification.missing_items) ? verification.missing_items : [],
+            scope_flags: Array.isArray(verification.scope_flags) ? verification.scope_flags : [],
+          }))}
           submissions={(submissions ?? []).map((submission) => ({
             ...submission,
             links: Array.isArray(submission.links) ? submission.links : [],
