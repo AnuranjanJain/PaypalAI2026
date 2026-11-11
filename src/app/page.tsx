@@ -1,86 +1,107 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
 
-type Status = "paid" | "review" | "revision" | "approval" | "locked";
-type Milestone = { id: number; label: string; title: string; amount: number; status: Status; detail: string; paymentState: "captured" | "pending" | "blocked"; paypalOrderId?: string; paypalApprovalUrl?: string };
-const seed: Milestone[] = [
-  { id: 1, label: "30%", title: "Discovery & direction", amount: 300, status: "paid", detail: "Brief, moodboard, and visual direction approved.", paymentState: "captured", paypalOrderId: "PP-PACT-001" },
-  { id: 2, label: "50%", title: "Three logo concepts", amount: 200, status: "review", detail: "Delivery Agent found 3/3 concepts and source files.", paymentState: "pending" },
-  { id: 3, label: "75%", title: "Approved revision", amount: 250, status: "locked", detail: "Unlocks after the concept milestone is accepted.", paymentState: "blocked" },
-  { id: 4, label: "100%", title: "Final brand package", amount: 250, status: "locked", detail: "Final exports and source assets.", paymentState: "blocked" },
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import "./landing.css";
+
+const steps = [
+  { number: "01", title: "Shape the Pact", copy: "Turn a brief into clear milestones, acceptance criteria, and payment amounts everyone can see." },
+  { number: "02", title: "Prove the work", copy: "Providers attach links, files, and notes to the exact milestone they completed." },
+  { number: "03", title: "Review together", copy: "Pact checks objective requirements, while the owner keeps the final human decision." },
+  { number: "04", title: "Pay with PayPal", copy: "Approve the milestone, capture the buyer payment in Sandbox, and keep the ledger honest." },
 ];
 
+function Reveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`landing-reveal ${className}`}>{children}</div>;
+}
+
 export default function Home() {
-  const [milestones, setMilestones] = useState(seed); const [activeId, setActiveId] = useState(2); const [notice, setNotice] = useState("Milestone 2 is ready for your review."); const [scope, setScope] = useState(false); const [evidenceOpen, setEvidenceOpen] = useState(false); const [paymentBusy, setPaymentBusy] = useState(false); const [paymentError, setPaymentError] = useState(""); const [paymentPhase, setPaymentPhase] = useState<"idle" | "creating" | "capturing">("idle"); const paymentCancelled = useRef(false); const [role, setRole] = useState<"owner" | "provider">("owner"); const [createPact, setCreatePact] = useState(false);
-  const active = milestones.find((m) => m.id === activeId) ?? milestones[1]; const paid = useMemo(() => milestones.filter((m) => m.status === "paid").reduce((a, m) => a + m.amount, 0), [milestones]);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+
   useEffect(() => {
-    if (!scope && !evidenceOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setScope(false); setEvidenceOpen(false); } };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [scope, evidenceOpen]);
-  const update = (status: Status, detail: string, payment?: Pick<Milestone, "paymentState" | "paypalOrderId" | "paypalApprovalUrl">) => setMilestones((xs) => xs.map((m) => m.id === activeId ? { ...m, status, detail, ...payment } : m));
-  const captureApprovedPayment = async () => { if (paymentBusy || !active.paypalOrderId) return; setPaymentBusy(true); setPaymentPhase("capturing"); try { const capture = await fetch(`/api/paypal/order/${active.paypalOrderId}/capture`, { method: "POST", headers: { "Idempotency-Key": `pact-capture-${active.id}-${active.paypalOrderId}` } }).then((response) => response.json()); if (capture.status !== "COMPLETED") throw new Error(capture.error ?? "Payment is still pending."); update("paid", `Owner approved. ${capture.mode === "paypal-sandbox" ? "PayPal sandbox capture completed." : "Demo payment state updated."}`, { paymentState: "captured" }); setNotice(capture.mode === "paypal-sandbox" ? `$${active.amount} captured in PayPal sandbox. Order ${active.paypalOrderId}.` : `Demo payment state updated for $${active.amount}.`); setActiveId(Math.min(activeId + 1, 4)); } catch (error) { const message = error instanceof Error ? error.message : "Payment could not be completed."; setPaymentError(message); setNotice(message); } finally { setPaymentBusy(false); setPaymentPhase("idle"); } };
-  const approve = async () => { if (paymentBusy) return; paymentCancelled.current = false; setPaymentError(""); setPaymentBusy(true); setPaymentPhase("creating"); try { const idempotencyKey = `pact-${active.id}-${Date.now()}`; const order = await fetch("/api/paypal/order", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ amount: active.amount, currency: "USD" }) }).then((response) => response.json()); if (paymentCancelled.current) return; if (!order.orderId) throw new Error(order.error ?? "Unable to create payment order."); const approvalUrl = Array.isArray(order.links) ? order.links.find((link: { rel?: string; href?: string }) => link.rel === "approve")?.href : undefined; if (order.mode === "paypal-sandbox" && approvalUrl) { update("approval", "PayPal order created. Approve the sandbox order, then return here to capture the milestone.", { paymentState: "pending", paypalOrderId: order.orderId, paypalApprovalUrl: approvalUrl }); setNotice("PayPal sandbox approval is required before this milestone can be captured."); return; } setPaymentPhase("capturing"); const capture = await fetch(`/api/paypal/order/${order.orderId}/capture`, { method: "POST", headers: { "Idempotency-Key": idempotencyKey } }).then((response) => response.json()); if (paymentCancelled.current) return; if (capture.status !== "COMPLETED") throw new Error(capture.error ?? `PayPal returned ${capture.status ?? "PENDING"}; payment was not captured.`); update("paid", `Owner approved. ${capture.mode === "paypal-sandbox" ? "PayPal sandbox capture completed." : "Demo payment state updated."}`, { paymentState: "captured", paypalOrderId: order.orderId }); setNotice(capture.mode === "paypal-sandbox" ? `$${active.amount} captured in PayPal sandbox. Order ${order.orderId}.` : `Demo payment state updated for $${active.amount}. Add PayPal sandbox credentials to capture for real.`); setActiveId(Math.min(activeId + 1, 4)); } catch (error) { if (!paymentCancelled.current) { const message = error instanceof Error ? error.message : "Payment could not be completed."; setPaymentError(message); setNotice(message); } } finally { if (!paymentCancelled.current) setPaymentPhase("idle"); setPaymentBusy(false); } };  const cancelPayment = () => { paymentCancelled.current = true; setPaymentBusy(false); setPaymentPhase("idle"); setPaymentError(""); setNotice("Payment attempt cancelled locally. No milestone was marked paid."); };
-  const revise = () => { update("revision", "Revision requested: add the missing accessibility lockup."); setNotice("Revision requested. Payment remains blocked until evidence is resubmitted."); };
-  const resubmit = () => { update("review", "New evidence received. Delivery Agent is ready to re-check."); setNotice("Evidence resubmitted. The Delivery Agent passed the objective checks."); };
-  return <main className="app-shell">
-    <header className="topbar"><div className="brand"><b aria-hidden="true">P</b><span>PayPal <strong>Pact</strong></span></div><div className="topbar-actions"><div className="role-switch" aria-label="Choose dashboard role"><button className={role === "owner" ? "selected" : ""} aria-pressed={role === "owner"} onClick={() => setRole("owner")}>Owner</button><button className={role === "provider" ? "selected" : ""} aria-pressed={role === "provider"} onClick={() => setRole("provider")}>Provider</button></div><span className="owner-view">{role === "owner" ? "Owner view" : "Provider view"}</span><i aria-hidden="true" /> Demo sandbox <button aria-label="Open account menu">AJ</button></div></header>
-    <div className="workspace"><aside className="sidebar"><label>Workspace</label>{["⌂ Overview", "◫ My Pacts", "◌ Payments", "⚙ Settings"].map((x, i) => <button className={i === 0 ? "nav active" : "nav"} aria-current={i === 0 ? "page" : undefined} key={x}>{x}</button>)}<div className="side-bottom"><label>Current Pact</label><div className="mini"><span aria-hidden="true">✦</span><div><strong>Brand identity kit</strong><small>pact_8F2A · $1,000</small></div></div></div></aside>
-      <section className="content"><div className="heading"><div><small>{role === "owner" ? "OWNER REVIEW" : "PROVIDER WORKSPACE"} · PACT_8F2A</small><h1>Brand identity kit</h1><p>{role === "owner" ? "A four-step agreement between you and Studio North." : "Your next delivery is ready for evidence submission."}</p></div>{role === "owner" && <div className="heading-actions"><button className="outline" onClick={() => setCreatePact(true)}>＋ Create Pact</button><button className="outline" onClick={() => setScope(true)}>＋ Request change</button></div>}</div>
-        {role === "provider" && <section className="provider-banner"><div className="provider-mark">✦</div><div><strong>Milestone 2 · Three logo concepts</strong><p>Submit the remaining accessibility lockup to unlock the $200 progress payment.</p></div><span className="provider-deadline">Due in 2 days</span></section>}
-        {notice && <div className="notice" role="status">✦ <span>{notice}</span><button aria-label="Dismiss notification" onClick={() => setNotice("")}>×</button></div>}
-        <div className="stats"><div><span>Total Pact value</span><b>$1,000</b><small>USD · sandbox Pact</small></div><div><span>Paid so far</span><b>${paid}</b><small>{paid / 10}% of agreement</small></div><div><span>Next deadline</span><b>2 days</b><small>Demo deadline · Oct 18</small></div><div><span>Agreement health</span><b className="green">● On track</b><small>Checked just now</small></div></div>
-        <div className="columns"><section className="panel"><div className="panel-head"><div><h2>Milestone timeline</h2><p>Each payment unlocks when work is verified and accepted.</p></div><em>✓ Pact active</em></div><div className="timeline" role="list" aria-label="Pact milestones">{milestones.map((m, i) => <div className="node-wrap" key={m.id} role="listitem"><button className={`node ${m.status}`} aria-label={`${m.label} ${m.title}, ${m.status === "locked" ? "locked" : "select milestone"}`} aria-current={m.id === activeId ? "step" : undefined} disabled={m.status === "locked"} onClick={() => setActiveId(m.id)}>{m.status === "paid" ? "✓" : m.status === "revision" ? "!" : m.status === "approval" ? "↗" : m.id}</button>{i < milestones.length - 1 && <span aria-hidden="true" className={m.status === "paid" ? "connector done" : "connector"} />}</div>)}</div><div className="milestone"><div><small>{active.label}</small><h3>{active.title}</h3></div><strong className={active.status === "paid" ? "green" : "blue"}>{active.status === "paid" ? "Paid" : `+$${active.amount}`}</strong><p>{active.detail}</p><footer><span className={`pill ${active.status}`}>{active.status === "review" ? "Ready for your review" : active.status === "revision" ? "Revision requested" : active.status === "approval" ? "Awaiting PayPal approval" : active.status === "paid" ? "Payment complete" : "Locked"}</span><span>✦ Delivery Agent {active.status === "approval" ? "ready for PayPal approval" : active.status === "review" ? "passed" : "verified"}</span></footer></div>{role === "provider" && <div className="evidence-box"><div><strong>Evidence checklist</strong><span>2 of 3 items complete</span></div><ul><li className="done">Three concept PNGs</li><li className="done">Editable source file</li><li>Accessibility lockup <small>Missing · add before resubmitting</small></li></ul><button className="primary" onClick={resubmit}>Resubmit evidence</button></div>}</section>
-          <aside className="panel review"><div className="panel-head"><div><h2>Two-step verification</h2><p>Both checks are required before payment.</p></div></div><div className="verify"><div><b aria-hidden="true">✦</b><span><strong>1 · Delivery Agent</strong><small>Objective evidence check</small></span><i>✓</i></div><button className="evidence-link" onClick={() => setEvidenceOpen(true)} aria-haspopup="dialog">View evidence</button><hr /><div><b>AJ</b><span><strong>2 · You</strong><small>Owner acceptance</small></span><i className={active.status === "review" ? "pending" : ""}>{active.status === "review" ? "2" : "✓"}</i></div></div>{role === "owner" && active.status === "review" && <div className="actions"><button className="primary" disabled={paymentBusy} onClick={approve}>{paymentPhase === "creating" ? "Creating PayPal order…" : paymentPhase === "capturing" ? "Capturing payment…" : `Approve & pay $${active.amount}`}</button>{paymentBusy && <button className="text cancel-payment" onClick={cancelPayment}>Cancel attempt</button>}{paymentError && !paymentBusy && <div className="payment-error" role="alert"><strong>Payment not completed</strong><span>{paymentError}</span><button className="text" onClick={approve}>Retry payment</button></div>}{!paymentBusy && !paymentError && <button className="text" onClick={revise}>Request revision</button>}</div>}
-{role === "owner" && active.status === "approval" && <div className="actions approval-actions"><p>Order <span className="mono">{active.paypalOrderId}</span> is ready. Approve it in the PayPal sandbox, then return here.</p>{active.paypalApprovalUrl && <a className="primary approval-link" href={active.paypalApprovalUrl} target="_blank" rel="noreferrer">Open PayPal sandbox approval</a>}<button className="primary" disabled={paymentBusy} onClick={captureApprovedPayment}>{paymentBusy ? "Capturing payment…" : "I approved in PayPal — capture payment"}</button></div>}{active.status === "revision" && <div className="actions">{role === "provider" ? <button className="primary" onClick={resubmit}>Resubmit evidence</button> : <p>Payment is blocked until the provider resubmits evidence.</p>}<p>Payment is blocked until the missing requirement is resolved.</p></div>}{active.status === "approval" && role === "provider" && <div className="success approval-wait">✓ <span><strong>Awaiting owner PayPal approval</strong><small>The owner must approve and capture this milestone.</small></span></div>}{active.status === "paid" && <div className="success">✓ <span><strong>Payment captured</strong><small>PayPal sandbox or demo adapter · milestone_{active.id} · just now</small></span></div>}</aside></div>
-        <section className="panel ledger"><div className="panel-head"><div><h2>Pact Ledger</h2><p>Explainable record of every decision and payment event.</p></div><button className="outline">Export ledger</button></div><div className="table-wrap"><table><thead><tr><th>Event</th><th>Actor</th><th>Result</th><th>Payment state</th><th>Amount</th><th>Transaction</th></tr></thead><tbody><tr><td>● Pact created</td><td>You</td><td>Approved</td><td>—</td><td>—</td><td>PACT_8F2A</td></tr>{milestones.map((m) => <tr key={m.id}><td>● Milestone {m.id} payment</td><td>{m.paymentState === "captured" ? "PayPal" : m.status === "approval" ? "Owner" : "Delivery Agent"}</td><td className={m.paymentState === "captured" ? "green" : m.status === "review" || m.status === "approval" ? "orange" : "muted"}>{m.paymentState === "captured" ? "Captured" : m.status === "review" ? "Awaiting owner" : m.status === "approval" ? "Awaiting PayPal approval" : "Locked"}</td><td><span className={`payment-state ${m.paymentState}`}>{m.paymentState === "captured" ? "CAPTURED" : m.status === "approval" ? "AWAITING PAYPAL" : m.paymentState === "pending" ? "PENDING APPROVAL" : "BLOCKED"}</span></td><td>${m.amount.toFixed(2)}</td><td className="mono">{m.paypalOrderId ?? "—"}</td></tr>)}</tbody></table></div></section><footer><span>PayPal Pact · Progressive settlement for human work</span><span>Built for the PayPal AI Hackathon · Sandbox mode</span></footer></section></div>
-    {evidenceOpen && <EvidenceReview milestone={active} onClose={() => setEvidenceOpen(false)} />}\n    {scope && <div className="modal-bg" role="presentation" onClick={() => setScope(false)}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="scope-title" onClick={(e) => e.stopPropagation()}><div className="modal-dialog-head"><h2 id="scope-title">Scope change detected</h2><button className="modal-close" aria-label="Close scope change dialog" autoFocus onClick={() => setScope(false)}>×</button></div><p>“Also create a mobile app” adds a new deliverable outside this Pact.</p><div className="change"><small>New change order</small><strong>Mobile app design</strong><span>AI suggests +$400 · +7 days</span></div><button className="primary" onClick={() => { setScope(false); setNotice("Change order drafted. Owner approval is required before work begins."); }}>Review change order</button></div></div>}
-    {createPact && <CreatePactWizard onClose={() => setCreatePact(false)} onCreated={(draft) => { setCreatePact(false); setNotice(`Pact draft ${draft.id} created for ${draft.title}. Review the milestones before inviting a provider.`); }} />}
-  </main>;
-}
+    const items = Array.from(document.querySelectorAll<HTMLElement>(".landing-reveal"));
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      items.forEach((item) => item.classList.add("is-visible"));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      }
+    }), { threshold: 0.12, rootMargin: "0px 0px -36px" });
+    items.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
 
-function CreatePactWizard({ onClose, onCreated }: { onClose: () => void; onCreated: (draft: { id: string; title: string }) => void }) {
-  const [step, setStep] = useState(1);
-  const [title, setTitle] = useState("Brand identity kit");
-  const [brief, setBrief] = useState("Create three logo concepts, one revision, and final source files for our new brand.");
-  const [budget, setBudget] = useState("1000");
-  const [schedule, setSchedule] = useState([30, 20, 25, 25]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const total = schedule.reduce((sum, value) => sum + value, 0);
-  const setShare = (index: number, value: string) => setSchedule((current) => current.map((item, position) => position === index ? Math.max(0, Number(value) || 0) : item));
-  const createDraft = async () => {
-    if (saving || total !== 100) return;
-    setSaving(true); setError("");
-    try {
-      const response = await fetch("/api/pact/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, brief, budget, schedule }) });
-      const result = await response.json() as { draft?: { id: string; title: string }; error?: string };
-      if (!response.ok || !result.draft) throw new Error(result.error ?? "Pact draft could not be created.");
-      onCreated(result.draft);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Pact draft could not be created.");
-    } finally { setSaving(false); }
-  };
-  return <div className="modal-bg" onClick={onClose}><div className="modal pact-wizard" onClick={(event) => event.stopPropagation()}><div className="wizard-head"><div><small>NEW PAYPAL PACT</small><h2>Create a Pact</h2><p>Turn a project brief into a progress-payment agreement.</p></div><button className="modal-close" aria-label="Close create Pact dialog" autoFocus onClick={onClose}>×</button></div><div className="wizard-steps"><span className={step >= 1 ? "active" : ""}>1 Brief</span><span className={step >= 2 ? "active" : ""}>2 Schedule</span><span className={step >= 3 ? "active" : ""}>3 Review</span></div>
-    {step === 1 && <div className="wizard-form"><label>Pact name<input value={title} onChange={(event) => setTitle(event.target.value)} /></label><label>Describe the work<textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4} /></label><p className="helper">AI will turn this brief into acceptance criteria and evidence requirements. You can edit them before approval.</p><label>Total budget (USD)<input type="number" min="1" value={budget} onChange={(event) => setBudget(event.target.value)} /></label></div>}
-    {step === 2 && <div className="wizard-form"><p className="wizard-intro">Set how the ${Number(budget || 0).toLocaleString()} budget is released as work progresses.</p>{["Discovery & direction", "First working delivery", "Review and revision", "Final handoff"].map((label, index) => <label className="schedule-row" key={label}><span><b>{index + 1}</b>{label}</span><div><input type="number" min="0" max="100" value={schedule[index]} onChange={(event) => setShare(index, event.target.value)} /><em>%</em></div></label>)}<div className={total === 100 ? "schedule-total valid" : "schedule-total invalid"}><span>Total allocation</span><strong>{total}%</strong></div>{total !== 100 && <p className="helper error">Milestone percentages must add up to 100%.</p>}</div>}
-    {step === 3 && <div className="wizard-review"><div className="review-summary"><small>PACT NAME</small><strong>{title || "Untitled Pact"}</strong><p>{brief}</p><span>${Number(budget || 0).toLocaleString()} USD · {schedule.length} milestones</span></div><div className="review-list">{["Discovery & direction", "First working delivery", "Review and revision", "Final handoff"].map((label, index) => <div key={label}><span>{schedule[index]}% · {label}</span><b>${((Number(budget) || 0) * schedule[index] / 100).toFixed(0)}</b></div>)}</div><p className="helper">The Pact starts as a draft. No PayPal payment is created until the owner approves a milestone.</p></div>}
-    {error && <p className="helper error wizard-error" role="alert">{error}</p>}<div className="modal-actions"><button className="outline" disabled={saving} onClick={step === 1 ? onClose : () => setStep(step - 1)}>{step === 1 ? "Cancel" : "Back"}</button>{step < 3 ? <button className="primary" disabled={step === 2 && total !== 100} onClick={() => setStep(step + 1)}>Continue</button> : <button className="primary" disabled={saving} onClick={createDraft}>{saving ? "Creating draft…" : "Create Pact draft"}</button>}</div>
-  </div></div>;
-}
+  return (
+    <main className="landing-page">
+      <nav className="landing-nav" aria-label="Main navigation">
+        <Link href="/" className="landing-brand">
+          <span className="landing-brand-mark"><Image src="/pact-supplied-icon.png" alt="" width={34} height={34} priority /></span>
+          <span>PayPal <strong>Pact</strong></span>
+        </Link>
+        <div className="landing-nav-links">
+          <a href="#how-it-works">How it works</a>
+          <a href="#for-teams">For teams</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div className="landing-nav-actions">
+          <Link href="/login?mode=signin" className="landing-login">Sign in</Link>
+          <Link href="/login?mode=signup" className="landing-nav-cta">Get started <span aria-hidden="true">↗</span></Link>
+        </div>
+      </nav>
 
-function EvidenceReview({ milestone, onClose }: { milestone: Milestone; onClose: () => void }) {
-  const passed = milestone.status !== "revision";
-  const criteria = ["Three concept PNGs", "Editable source file", "Accessibility lockup"];
-  const evidence = passed ? criteria : ["Three concept PNGs", "Editable source file"];
-  return <div className="modal-bg" role="presentation" onClick={onClose}>
-    <section className="modal evidence-review" role="dialog" aria-modal="true" aria-labelledby="evidence-title" onClick={(event) => event.stopPropagation()}>
-      <div className="wizard-head"><div><small>DELIVERY AGENT REPORT · {milestone.label}</small><h2 id="evidence-title">Evidence review</h2><p>{milestone.title}</p></div><button className="modal-close" aria-label="Close evidence review" autoFocus onClick={onClose}>×</button></div>
-      <div className="agent-mode"><span aria-hidden="true">✦</span><div><strong>Deterministic demo verifier</strong><small>Provider-ready endpoint · owner decision still required</small></div><b>{passed ? "92% confidence" : "Needs revision"}</b></div>
-      <div className="evidence-columns"><div><h3>Acceptance criteria</h3><ul>{criteria.map((item) => <li key={item}>{item}</li>)}</ul></div><div><h3>Evidence found</h3><ul>{evidence.map((item) => <li className="evidence-found" key={item}>✓ {item}</li>)}{!passed && <li className="evidence-missing">× Accessibility lockup <small>Missing from submission</small></li>}</ul></div></div>
-      <div className="evidence-summary"><strong>{passed ? "Eligible for owner review" : "Payment blocked pending revision"}</strong><span>{passed ? "All objective checks passed. Review the submitted work before approving payment." : "The Delivery Agent found a missing requirement. Request a revision before payment."}</span></div>
-      <div className="modal-actions"><button className="outline" onClick={onClose}>Close report</button></div>
-    </section>
-  </div>;
+      <section className="landing-hero">
+        <div className="landing-hero-glow landing-hero-glow-one" aria-hidden="true" />
+        <div className="landing-hero-glow landing-hero-glow-two" aria-hidden="true" />
+        <div className="landing-container landing-hero-grid">
+          <Reveal className="landing-hero-copy">
+            <div className="landing-live"><span /> PayPal-powered milestone payments</div>
+            <h1>Make progress<br /><em>payable.</em></h1>
+            <p className="landing-hero-lede">Pact turns project work into a clear, reviewable agreement. Providers get paid for verified progress. Owners keep control at every step.</p>
+            <div className="landing-hero-actions">
+              <Link href="/login?mode=signup" className="landing-primary-cta">Create your first Pact <span aria-hidden="true">→</span></Link>
+              <Link href="/walkthrough" className="landing-secondary-cta"><span className="play-icon" aria-hidden="true">▶</span> See the walkthrough</Link>
+            </div>
+            <div className="landing-proof"><div className="proof-avatars"><span>AN</span><span>SN</span><span>+</span></div><p>Built for owners, freelancers, and real work.</p></div>
+          </Reveal>
+          <Reveal className="landing-hero-visual">
+            <div className="hero-orbit hero-orbit-one" aria-hidden="true" /><div className="hero-orbit hero-orbit-two" aria-hidden="true" />
+            <div className="hero-product-card">
+              <div className="hero-product-top"><span className="hero-window-dots"><i /><i /><i /></span><span className="hero-product-label">PACT_8F2A <b>ACTIVE</b></span></div>
+              <div className="hero-product-title"><div><span>BRAND IDENTITY KIT</span><h2>Four milestones.<br />One clear agreement.</h2></div><span className="hero-product-amount">$1,000<small>USD · SANDBOX</small></span></div>
+              <div className="hero-timeline"><div className="hero-track" /><div className="hero-step complete"><b>✓</b><span><strong>30%</strong><small>Discovery</small></span></div><div className="hero-step current"><b>2</b><span><strong>50%</strong><small>Concepts</small></span></div><div className="hero-step"><b>3</b><span><strong>75%</strong><small>Revision</small></span></div><div className="hero-step"><b>4</b><span><strong>100%</strong><small>Final kit</small></span></div></div>
+              <div className="hero-review-row"><span className="hero-check-mark">✦</span><div><strong>Two-step verification</strong><small>Delivery Agent checked · Owner review next</small></div><span className="hero-review-status">READY</span></div>
+              <div className="hero-payment-row"><span>Next payment</span><strong>$200.00</strong><span className="hero-payment-pill">REVIEW</span></div>
+            </div>
+            <div className="hero-float-card hero-float-card-left"><span className="float-icon float-icon-green">✓</span><div><strong>Evidence accepted</strong><small>2 minutes ago</small></div></div>
+            <div className="hero-float-card hero-float-card-right"><span className="float-icon float-icon-blue">$</span><div><strong>PayPal capture</strong><small>Owner approved</small></div></div>
+          </Reveal>
+        </div>
+        <div className="landing-container landing-scroll-cue"><span>Scroll to explore</span><i /></div>
+      </section>
+
+      <section className="landing-trust-strip"><div className="landing-container trust-inner"><span>THE AGREEMENT LAYER FOR</span><div><strong>Independent teams</strong><strong>Creative studios</strong><strong>Client work</strong><strong>Human review</strong></div></div></section>
+
+      <section id="how-it-works" className="landing-section landing-how"><div className="landing-container">
+        <Reveal className="section-heading"><span className="section-index">01 / THE LOOP</span><h2>Work that moves.<br /><em>Money that follows.</em></h2><p>Every Pact makes the next action obvious, from the first brief to the final PayPal capture.</p></Reveal>
+        <div className="landing-step-grid">{steps.map((step) => <Reveal className="landing-step" key={step.number}><span className="step-number">{step.number}</span><div className="step-line" aria-hidden="true"><span /></div><h3>{step.title}</h3><p>{step.copy}</p><span className="step-arrow" aria-hidden="true">↗</span></Reveal>)}</div>
+      </div></section>
+
+      <section id="for-teams" className="landing-section landing-for-teams"><div className="landing-container landing-split">
+        <Reveal className="section-heading"><span className="section-index">02 / ONE PACT, TWO VIEWS</span><h2>Less chasing.<br /><em>More shipping.</em></h2><p>One shared timeline gives both sides confidence without adding another status meeting.</p><Link href="/login?mode=signup" className="text-cta">Build a Pact <span>→</span></Link></Reveal>
+        <Reveal className="persona-panel"><div className="persona-tabs"><span className="persona-tab active">Owner view</span><span className="persona-tab">Provider view</span></div><div className="persona-body"><div className="persona-icon">✦</div><div><span className="persona-label">OWNER CONFIRMS</span><h3>See exactly what unlocks the next payment.</h3><p>Review evidence, request a revision, or approve the milestone when the work is ready.</p></div><div className="persona-metric"><strong>2 / 2</strong><span>checks complete</span></div></div><div className="persona-bottom"><span><i className="dot dot-green" /> Evidence reviewed</span><span><i className="dot dot-blue" /> $200 ready to capture</span><span className="persona-chevron">→</span></div></Reveal>
+      </div></section>
+
+      <section className="landing-section landing-principles"><div className="landing-container"><Reveal className="principles-heading"><span className="section-index">03 / WHY PACT</span><h2>Trust is a<br /><em>product feature.</em></h2></Reveal><div className="principles-grid"><Reveal className="principle-card principle-card-dark"><span className="principle-icon">◒</span><h3>Progressive by design</h3><p>Break a big agreement into smaller, visible decisions. Cash flow follows real progress.</p><span className="principle-number">01</span></Reveal><Reveal className="principle-card"><span className="principle-icon principle-icon-blue">⌁</span><h3>Evidence over promises</h3><p>Keep files, links, notes, and review outcomes attached to the milestone they explain.</p><span className="principle-number">02</span></Reveal><Reveal className="principle-card"><span className="principle-icon principle-icon-green">✓</span><h3>Humans stay accountable</h3><p>AI can surface objective signals. The project owner makes the acceptance decision.</p><span className="principle-number">03</span></Reveal></div></div></section>
+
+      <section className="landing-section landing-final-cta"><div className="landing-container final-cta-inner"><Reveal><span className="section-index">04 / START WITH THE WORK</span><h2>A better agreement<br /><em>starts here.</em></h2><p>Create a workspace, invite a provider, and make your next milestone clear.</p><div className="landing-hero-actions"><Link href="/login?mode=signup" className="landing-primary-cta">Create your first Pact <span aria-hidden="true">→</span></Link><Link href="/login?mode=signin" className="landing-secondary-cta">I already have an account</Link></div></Reveal><Reveal className="final-mark"><Image src="/pact-logo.png" alt="PayPal Pact" width={190} height={190} /></Reveal></div></section>
+
+      <section id="faq" className="landing-faq"><div className="landing-container faq-grid"><Reveal className="section-heading"><span className="section-index">05 / QUESTIONS</span><h2>Good to<br /><em>know.</em></h2><p>Short answers for the first conversation.</p></Reveal><Reveal className="faq-list">{[{ q: "Is Pact a legal escrow service?", a: "No. Pact is a hackathon MVP for milestone-controlled payment workflows. PayPal Sandbox handles the buyer payment state; it does not claim legal escrow." }, { q: "Who approves a milestone?", a: "The Delivery Agent can check objective evidence, but the project owner always makes the final acceptance decision." }, { q: "Can I use Pact with a provider today?", a: "Yes. Create an account, make a workspace, draft a Pact, and invite a provider by email. The current release supports the core setup flow." }, { q: "What happens when payout access is unavailable?", a: "Checkout and provider payout remain separate states. Pact shows payout as pending or blocked until PayPal confirms the capability." }].map((item, index) => <div className={`faq-item ${openFaq === index ? "open" : ""}`} key={item.q}><button onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span>{item.q}</span><i aria-hidden="true">{openFaq === index ? "−" : "+"}</i></button><div className="faq-answer"><p>{item.a}</p></div></div>)}</Reveal></div></section>
+
+      <footer className="landing-footer"><div className="landing-container footer-inner"><Link href="/" className="landing-brand"><span className="landing-brand-mark"><Image src="/pact-supplied-icon.png" alt="" width={28} height={28} /></span><span>PayPal <strong>Pact</strong></span></Link><p>Progressive settlement for human work.</p><div><Link href="/login?mode=signin">Sign in</Link><Link href="/walkthrough">Walkthrough</Link><a href="#faq">FAQ</a></div></div></footer>
+    </main>
+  );
 }
