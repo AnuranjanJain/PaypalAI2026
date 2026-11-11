@@ -48,7 +48,21 @@ export async function POST(request: Request) {
     if (!order.id) return paypalError(502, "PayPal returned an invalid order.");
     const approvalUrl = Array.isArray(order.links) ? (order.links as Array<{ rel?: string; href?: string }>).find((link) => link.rel === "approve")?.href ?? null : null;
     const { error: insertError } = await supabase.rpc("record_pact_payment_event", { target_pact: body.pactId, target_milestone: body.milestoneId, target_order_id: order.id, target_approval_url: approvalUrl, target_amount_cents: milestone.amount_cents });
-    if (insertError) return paypalError(409, "The PayPal order was created but could not be recorded. Reconcile this order before retrying.");
+    if (insertError) {
+      // A concurrent request may have won the milestone's unique active-order race.
+      // Return that durable order so the caller can continue checkout instead of creating another one.
+      const { data: recordedEvent } = await supabase.from("pact_payment_events")
+        .select("paypal_order_id, approval_url, status, payout_status")
+        .eq("milestone_id", body.milestoneId)
+        .in("status", ["created", "captured", "payout_pending", "paid_to_provider", "failed"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recordedEvent?.paypal_order_id) {
+        return NextResponse.json({ mode: "existing", orderId: recordedEvent.paypal_order_id, approvalUrl: recordedEvent.approval_url, status: recordedEvent.status, payoutStatus: recordedEvent.payout_status });
+      }
+      return paypalError(409, "The PayPal order was created but could not be recorded. Reconcile this order before retrying.");
+    }
     return NextResponse.json({ mode: "paypal-sandbox", orderId: order.id, status: order.status, links: order.links, approvalUrl });
   } catch { return paypalError(502, "PayPal is temporarily unavailable."); }
 }

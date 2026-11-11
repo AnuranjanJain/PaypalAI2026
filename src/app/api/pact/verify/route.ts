@@ -11,5 +11,5 @@ export async function POST(request: Request) {
   const input = validateMilestoneInput(body);
   if (!input) return NextResponse.json({ error: "title, acceptanceCriteria, and evidence are invalid." }, { status: 400 });
   const providerResult = await verifyMilestoneWithProvider(input);
-  return NextResponse.json({ verification: providerResult ?? verifyMilestone(input), mode: providerResult ? "ai-provider" : "demo-fallback" });
+  return NextResponse.json({ verification: providerResult ?? verifyMilestone(input), mode: providerResult ? "ai-provider" : "deterministic-fallback" });
 }

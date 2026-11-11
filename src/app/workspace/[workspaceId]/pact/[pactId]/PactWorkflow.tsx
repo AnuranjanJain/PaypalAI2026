@@ -107,7 +107,7 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
     if (!order?.captured) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/pact/payment/order/${order.orderId}/payout`, { method: "POST", headers: { "Idempotency-Key": `payout-${order.orderId}-${Date.now()}` } });
+      const response = await fetch(`/api/pact/payment/order/${order.orderId}/payout`, { method: "POST", headers: { "Idempotency-Key": `payout-${order.orderId}` } });
       const data = await response.json();
       if (!response.ok && data.payoutStatus !== "blocked") throw new Error(data.error ?? "Provider payout could not be requested.");
       const payoutStatus = data.payoutStatus ?? "blocked";
@@ -123,6 +123,20 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
   </div>;
 }
 
+function ProviderPaymentState({ event }: { event?: PaymentEvent }) {
+  if (!event) return null;
+  const state = event.status === "paid_to_provider"
+    ? "Paid to provider"
+    : event.status === "payout_pending"
+      ? "Payout pending"
+      : event.status === "captured"
+        ? "Payment captured"
+        : event.status === "failed"
+          ? "Payment needs attention"
+          : "Awaiting owner payment";
+  return <p className={`pact-payment-state pact-payment-state-${event.status}`} role="status">Payment status: <strong>{state}</strong></p>;
+}
+
 export default function PactWorkflow({ workspaceId, pactId, isOwner, pactStatus, milestones, submissions, paymentEvents, verifications, unavailable }: { workspaceId: string; pactId: string; isOwner: boolean; pactStatus: string; milestones: Milestone[]; submissions: Submission[]; paymentEvents: PaymentEvent[]; verifications: PactVerification[]; unavailable?: boolean }) {
   const latest = useMemo(() => new Map(milestones.map((milestone) => [milestone.id, submissions.find((submission) => submission.milestone_id === milestone.id)])), [milestones, submissions]);
   const payments = useMemo(() => new Map(paymentEvents.map((event) => [event.milestone_id, event])), [paymentEvents]);
@@ -133,7 +147,7 @@ export default function PactWorkflow({ workspaceId, pactId, isOwner, pactStatus,
     {unavailable ? <div className="pact-form-error" role="status">Evidence storage is not enabled yet. Apply the latest Supabase migration to activate submissions and review.</div> : <ol className="pact-workflow-list">{milestones.map((milestone) => {
       const submission = latest.get(milestone.id);
       const canSubmit = !isOwner && milestone.status !== "approved" && (!submission || submission.status === "revision_requested");
-      return <li key={milestone.id} className="pact-workflow-item"><div className="pact-workflow-heading"><div><strong>{milestone.title}</strong><small>${(milestone.amount_cents / 100).toFixed(2)} · {milestone.status.replaceAll("_", " ")}</small></div>{submission && <span className={`pact-submission-status pact-submission-${submission.status}`}>{submission.status.replaceAll("_", " ")}</span>}</div>{submission && <div className="pact-submission-summary"><p>{submission.notes}</p>{submission.links.length > 0 && <ul>{submission.links.map((link) => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul>}{submission.decision_note && <p className="pact-decision-note">Owner note: {submission.decision_note}</p>}</div>}{canSubmit && <EvidenceForm workspaceId={workspaceId} pactId={pactId} milestoneId={milestone.id} />}{isOwner && submission?.status === "submitted" && <><EvidenceCheck pactId={pactId} milestoneId={milestone.id} submissionId={submission.id} existing={verificationMap.get(submission.id)} /><ReviewForm workspaceId={workspaceId} pactId={pactId} submission={submission} verification={verificationMap.get(submission.id)} /></>}{isOwner && milestone.status === "approved" && <CheckoutButton workspaceId={workspaceId} pactId={pactId} milestone={milestone} existingEvent={payments.get(milestone.id)} />}</li>;
+      return <li key={milestone.id} className="pact-workflow-item"><div className="pact-workflow-heading"><div><strong>{milestone.title}</strong><small>${(milestone.amount_cents / 100).toFixed(2)} · {milestone.status.replaceAll("_", " ")}</small></div>{submission && <span className={`pact-submission-status pact-submission-${submission.status}`}>{submission.status.replaceAll("_", " ")}</span>}</div>{submission && <div className="pact-submission-summary"><p>{submission.notes}</p>{submission.links.length > 0 && <ul>{submission.links.map((link) => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul>}{submission.decision_note && <p className="pact-decision-note">Owner note: {submission.decision_note}</p>}</div>}{!isOwner && <ProviderPaymentState event={payments.get(milestone.id)} />}{canSubmit && <EvidenceForm workspaceId={workspaceId} pactId={pactId} milestoneId={milestone.id} />}{isOwner && submission?.status === "submitted" && <><EvidenceCheck pactId={pactId} milestoneId={milestone.id} submissionId={submission.id} existing={verificationMap.get(submission.id)} /><ReviewForm workspaceId={workspaceId} pactId={pactId} submission={submission} verification={verificationMap.get(submission.id)} /></>}{isOwner && milestone.status === "approved" && <CheckoutButton workspaceId={workspaceId} pactId={pactId} milestone={milestone} existingEvent={payments.get(milestone.id)} />}</li>;
     })}</ol>}
   </section>;
 }

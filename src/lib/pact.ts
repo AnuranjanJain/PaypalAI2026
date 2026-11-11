@@ -43,7 +43,7 @@ function extractResponseText(payload: unknown): string | null {
   return text ?? null;
 }
 
-/** Optional Responses API provider boundary. Secrets stay server-side and failures use the safe demo result. */
+/** Optional Responses API provider boundary. Secrets stay server-side and failures use the safe deterministic result. */
 export async function verifyMilestoneWithProvider(input: MilestoneInput): Promise<VerificationResult | null> {
   const endpoint = process.env.AI_API_URL ?? "https://api.meta.ai/v1/responses";
   const apiKey = process.env.AI_API_KEY ?? process.env.MODEL_API_KEY;
@@ -65,7 +65,7 @@ export async function verifyMilestoneWithProvider(input: MilestoneInput): Promis
   }
 }
 
-/** Deterministic fallback used by the demo until an AI provider is configured. */
+/** Deterministic fallback used when an AI provider is unavailable or returns invalid output. */
 export function verifyMilestone(input: MilestoneInput): VerificationResult {
   const evidence = new Set(input.evidence.map((item) => item.toLowerCase()));
   const missingItems = input.acceptanceCriteria.filter((criterion) => {

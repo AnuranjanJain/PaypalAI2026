@@ -1,7 +1,7 @@
 -- Keep the main payment ledger in sync with provider payout outcomes.
 create or replace function public.mark_pact_payment_captured(target_order_id text)
 returns void language plpgsql security definer set search_path = public
-as $$
+as $pact_capture$
 declare
   event_status text;
 begin
@@ -17,7 +17,7 @@ begin
      set status = 'captured', updated_at = now()
    where paypal_order_id = target_order_id and owner_id = auth.uid();
 end;
-$$;
+$pact_capture$;
 
 revoke all on function public.mark_pact_payment_captured(text) from public;
 grant execute on function public.mark_pact_payment_captured(text) to authenticated;
@@ -34,7 +34,7 @@ returns table(
   payout_batch_id text
 )
 language plpgsql security definer set search_path = public
-as $$
+as $pact_details$
 declare
   v_pact_id uuid;
   v_milestone_id uuid;
@@ -70,7 +70,7 @@ begin
   return query select v_pact_id, v_milestone_id, v_status, v_payout_status,
     v_amount_cents, v_currency, v_recipient, v_batch_id;
 end;
-$$;
+$pact_details$;
 
 revoke all on function public.get_pact_payout_details(text) from public;
 grant execute on function public.get_pact_payout_details(text) to authenticated;
@@ -83,7 +83,7 @@ create or replace function public.record_pact_payout_status(
   target_error text default null
 )
 returns void language plpgsql security definer set search_path = public
-as $$
+as $pact_status$
 declare
   current_status text;
 begin
@@ -113,7 +113,7 @@ begin
          payout_updated_at = now(), updated_at = now()
    where paypal_order_id = target_order_id and owner_id = auth.uid();
 end;
-$$;
+$pact_status$;
 
 revoke all on function public.record_pact_payout_status(text, text, text, text, text) from public;
 grant execute on function public.record_pact_payout_status(text, text, text, text, text) to authenticated;

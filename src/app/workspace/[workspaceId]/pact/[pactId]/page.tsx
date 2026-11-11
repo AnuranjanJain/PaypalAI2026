@@ -35,11 +35,11 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
     .order("created_at", { ascending: false });
 
   const isOwner = membership.role === "owner";
-  const { data: paymentEvents } = isOwner ? await supabase.from("pact_payment_events")
+  const { data: paymentEvents } = await supabase.from("pact_payment_events")
     .select("milestone_id, paypal_order_id, approval_url, status, payout_status")
     .eq("pact_id", pactId)
     .in("status", ["created", "captured", "payout_pending", "paid_to_provider", "failed"])
-    .order("created_at", { ascending: false }) : { data: [] };
+    .order("created_at", { ascending: false });
   const milestones = [...pact.milestones].sort((a, b) => a.position - b.position);
   return (
     <main className="pact-page">
