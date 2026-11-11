@@ -53,12 +53,17 @@ export default async function AcceptInvitationPage({
             </>
           ) : (
             <>
-              <p className="pact-eyebrow">INVITATION UNAVAILABLE</p>
-              <h1>This link cannot be accepted</h1>
-              <p className="pact-intro">The link may have expired, already been used, or been created for another email address. You are signed in as <strong>{user.email}</strong>. Sign in with the invited email or ask the owner to create a new link.</p>
+              <p className="pact-eyebrow">PACT INVITATION</p>
+              <h1>Continue with this invitation</h1>
+              <p className="pact-intro">This link is ready to check. Use the account that the owner invited, then accept the Pact to open the project. You are signed in as <strong>{user.email}</strong>.</p>
               {error && <p className="pact-form-error" role="alert">Invitation details could not be loaded.</p>}
               {actionError === "wrong-email" && <p className="pact-form-error" role="alert">This invitation belongs to a different email address. Sign out and sign in with the invited provider account.</p>}
+              {actionError === "wrong-account" && <p className="pact-form-error" role="alert">This account cannot join the Pact. Ask the owner to invite the provider account.</p>}
+              {actionError === "expired" && <p className="pact-form-error" role="alert">This invitation has expired or is no longer available. Ask the owner to create a new link.</p>}
+              {actionError === "setup" && <p className="pact-form-error" role="alert">Pact acceptance is not enabled in this Supabase project yet. Apply the latest invitation migration, then try again.</p>}
+              {actionError === "database" && <p className="pact-form-error" role="alert">Pact acceptance failed while saving access. Try again once, then ask the owner for a new link if it persists.</p>}
               <div className="pact-detail-actions">
+                {!error && actionError !== "setup" && <AcceptInvitationForm action={acceptPactInvitation.bind(null, token)} />}
                 <Link className="pact-secondary" href="/workspace">Open your workspaces</Link>
                 <form action={signOutForInvitation.bind(null, token)}><button className="pact-secondary" type="submit">Sign out and use another account</button></form>
               </div>
