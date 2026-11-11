@@ -70,10 +70,11 @@ function EvidenceCheck({ pactId, milestoneId, submissionId, existing }: { pactId
 function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { workspaceId: string; pactId: string; milestone: Milestone; existingEvent?: PaymentEvent }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [order, setOrder] = useState<{ orderId: string; approvalUrl?: string; captured?: boolean; payoutStatus?: string } | null>(() => existingEvent ? {
+  const existingPaymentIsCaptured = Boolean(existingEvent && (existingEvent.status === "captured" || existingEvent.status === "payout_pending" || existingEvent.status === "paid_to_provider" || (existingEvent.status === "failed" && existingEvent.payout_status === "failed")));
+  const [order, setOrder] = useState<{ orderId: string; approvalUrl?: string; captured?: boolean; payoutStatus?: string } | null>(() => existingEvent && (existingEvent.status !== "failed" || existingEvent.payout_status === "failed") ? {
     orderId: existingEvent.paypal_order_id,
     approvalUrl: existingEvent.approval_url ?? undefined,
-    captured: ["captured", "payout_pending", "paid_to_provider", "failed"].includes(existingEvent.status),
+    captured: existingPaymentIsCaptured,
     payoutStatus: existingEvent.payout_status ?? "not_requested",
   } : null);
   async function createOrder() {
@@ -83,7 +84,8 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
       const data = await response.json();
       if (!response.ok || !data.orderId) throw new Error(data.error ?? "PayPal checkout could not be started.");
       const approvalUrl = Array.isArray(data.links) ? data.links.find((link: { rel?: string; href?: string }) => link.rel === "approve")?.href : undefined;
-      setOrder({ orderId: data.orderId, approvalUrl: approvalUrl ?? data.approvalUrl, captured: data.status === "captured" });
+      const captured = ["captured", "payout_pending", "paid_to_provider"].includes(data.status) || (data.status === "failed" && data.payoutStatus === "failed");
+      setOrder({ orderId: data.orderId, approvalUrl: approvalUrl ?? data.approvalUrl, captured, payoutStatus: data.payoutStatus ?? "not_requested" });
       if (!approvalUrl && !data.approvalUrl) setMessage("PayPal order is recorded. Approve it in the sandbox, then return here to capture.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "PayPal checkout could not be started."); }
     finally { setBusy(false); }

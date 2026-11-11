@@ -11,6 +11,8 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
   const { data: event } = await supabase.from("pact_payment_events").select("id, pact_id, milestone_id, status, owner_id, payout_status").eq("paypal_order_id", orderId).maybeSingle();
   if (!event || event.owner_id !== user.id) return paypalError(404, "Payment order not found.");
   if (event.status === "captured" || event.status === "payout_pending" || event.status === "paid_to_provider") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: event.payout_status ?? "not_requested" });
+  if (event.status === "failed" && event.payout_status === "failed") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: "failed" });
+  if (event.status === "failed") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "FAILED", error: "This PayPal order was canceled. Start a new checkout for the milestone." }, { status: 409 });
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) return paypalError(503, "PayPal Sandbox credentials are not configured.");
   const baseUrl = (process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
   const credentials = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString("base64");

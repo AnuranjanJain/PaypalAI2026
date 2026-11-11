@@ -24,9 +24,14 @@ export async function POST(request: Request) {
   const { data: milestone } = await supabase.from("milestones").select("id, amount_cents, status").eq("id", body.milestoneId).eq("pact_id", body.pactId).maybeSingle();
   if (!milestone || milestone.status !== "approved") return paypalError(409, "Approve the milestone before starting PayPal checkout.");
 
-  const existing = await supabase.from("pact_payment_events").select("paypal_order_id, approval_url, status").eq("milestone_id", body.milestoneId).in("status", ["created", "captured", "payout_pending", "paid_to_provider"]).maybeSingle();
+  const existing = await supabase.from("pact_payment_events")
+    .select("paypal_order_id, approval_url, status, payout_status")
+    .eq("milestone_id", body.milestoneId)
+    .in("status", ["created", "captured", "payout_pending", "paid_to_provider", "failed"])
+    .order("created_at", { ascending: false });
   if (existing.error) return paypalError(503, "Payment storage is not ready. Apply the latest Supabase migration first.");
-  if (existing.data?.paypal_order_id) return NextResponse.json({ mode: "existing", orderId: existing.data.paypal_order_id, approvalUrl: existing.data.approval_url, status: existing.data.status });
+  const reusableEvent = (existing.data ?? []).find((event) => event.status !== "failed" || event.payout_status === "failed");
+  if (reusableEvent?.paypal_order_id) return NextResponse.json({ mode: "existing", orderId: reusableEvent.paypal_order_id, approvalUrl: reusableEvent.approval_url, status: reusableEvent.status, payoutStatus: reusableEvent.payout_status });
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) return paypalError(503, "PayPal Sandbox credentials are not configured.");
 
   const baseUrl = (process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
