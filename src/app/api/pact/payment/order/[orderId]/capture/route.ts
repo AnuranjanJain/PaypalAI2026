@@ -8,9 +8,9 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return paypalError(401, "Sign in to capture a payment.");
-  const { data: event } = await supabase.from("pact_payment_events").select("id, pact_id, milestone_id, status, owner_id").eq("paypal_order_id", orderId).maybeSingle();
+  const { data: event } = await supabase.from("pact_payment_events").select("id, pact_id, milestone_id, status, owner_id, payout_status").eq("paypal_order_id", orderId).maybeSingle();
   if (!event || event.owner_id !== user.id) return paypalError(404, "Payment order not found.");
-  if (event.status === "captured" || event.status === "payout_pending" || event.status === "paid_to_provider") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: event.status === "captured" ? "blocked" : event.status });
+  if (event.status === "captured" || event.status === "payout_pending" || event.status === "paid_to_provider") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: event.payout_status ?? "not_requested" });
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) return paypalError(503, "PayPal Sandbox credentials are not configured.");
   const baseUrl = (process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
   const credentials = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString("base64");
@@ -28,6 +28,6 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
     if (capture.status !== "COMPLETED") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: capture.status ?? "PENDING" }, { status: captureResponse.ok ? 409 : 502 });
     const { error: ledgerError } = await supabase.rpc("mark_pact_payment_captured", { target_order_id: orderId });
     if (ledgerError) return paypalError(502, "PayPal reports a completed capture, but the Pact ledger could not be updated. Retry reconciliation before treating it as recorded.");
-    return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: "blocked", payoutMessage: "Provider payout is not enabled for this account; capture is recorded separately." });
+    return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: "not_requested", payoutMessage: "Capture is recorded. Request provider payout separately when PayPal Payouts is available." });
   } catch { return paypalError(502, "PayPal is temporarily unavailable."); }
 }

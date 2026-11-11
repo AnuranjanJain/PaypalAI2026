@@ -7,7 +7,7 @@ import { reviewPactSubmission, submitPactEvidence, type WorkflowActionState } fr
 
 type Milestone = { id: string; title: string; position: number; amount_cents: number; status: string };
 type Submission = { id: string; milestone_id: string; notes: string; links: string[]; status: string; decision_note: string | null; created_at: string };
-type PaymentEvent = { milestone_id: string; paypal_order_id: string; approval_url: string | null; status: string };
+type PaymentEvent = { milestone_id: string; paypal_order_id: string; approval_url: string | null; status: string; payout_status?: string | null };
 
 function EvidenceForm({ workspaceId, pactId, milestoneId }: { workspaceId: string; pactId: string; milestoneId: string }) {
   const action = submitPactEvidence.bind(null, workspaceId, pactId, milestoneId);
@@ -47,7 +47,7 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
     orderId: existingEvent.paypal_order_id,
     approvalUrl: existingEvent.approval_url ?? undefined,
     captured: ["captured", "payout_pending", "paid_to_provider"].includes(existingEvent.status),
-    payoutStatus: existingEvent.status,
+    payoutStatus: existingEvent.payout_status ?? "not_requested",
   } : null);
   async function createOrder() {
     setBusy(true); setMessage("");
@@ -73,8 +73,22 @@ function CheckoutButton({ workspaceId, pactId, milestone, existingEvent }: { wor
     } catch (error) { setMessage(error instanceof Error ? error.message : "PayPal capture could not be completed."); }
     finally { setBusy(false); }
   }
+  async function requestPayout() {
+    if (!order?.captured) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/pact/payment/order/${order.orderId}/payout`, { method: "POST", headers: { "Idempotency-Key": `payout-${order.orderId}-${Date.now()}` } });
+      const data = await response.json();
+      if (!response.ok && data.payoutStatus !== "blocked") throw new Error(data.error ?? "Provider payout could not be requested.");
+      const payoutStatus = data.payoutStatus ?? "blocked";
+      setOrder({ ...order, payoutStatus });
+      setMessage(data.error ?? (payoutStatus === "paid_to_provider" ? "Provider payout confirmed by PayPal." : payoutStatus === "payout_pending" ? "PayPal accepted the payout request; it is still pending." : "Provider payout is blocked until PayPal Payouts is enabled."));
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Provider payout could not be requested."); }
+    finally { setBusy(false); }
+  }
+  const payoutLabel = order?.payoutStatus === "paid_to_provider" ? "paid to provider" : order?.payoutStatus === "payout_pending" ? "pending" : order?.payoutStatus === "failed" ? "failed" : order?.payoutStatus === "blocked" ? "blocked" : "not requested";
   return <div className="pact-checkout">
-    {order?.captured ? <p className="pact-form-success" role="status">PayPal capture completed. Provider payout is {order.payoutStatus === "paid_to_provider" ? "confirmed" : "pending or blocked until Payouts eligibility is confirmed"}.</p> : order ? <><p className="pact-checkout-state">Order <code>{order.orderId}</code> is awaiting buyer approval.</p><div className="pact-review-actions"><button className="pact-primary" type="button" onClick={capture} disabled={busy}>{busy ? "Checking…" : "I approved in PayPal — capture"}</button>{order.approvalUrl && <a className="pact-secondary" href={order.approvalUrl} target="_blank" rel="noreferrer">Open PayPal approval</a>}</div></> : <button className="pact-primary" type="button" onClick={createOrder} disabled={busy}>{busy ? "Connecting to PayPal…" : `Start PayPal checkout · $${(milestone.amount_cents / 100).toFixed(2)}`}</button>}
+    {order?.captured ? <><p className="pact-form-success" role="status">PayPal capture completed. Provider payout is <strong>{payoutLabel}</strong>.</p>{order.payoutStatus !== "paid_to_provider" && <button className="pact-secondary" type="button" onClick={requestPayout} disabled={busy}>{busy ? "Checking PayPal Payouts…" : order.payoutStatus === "failed" ? "Retry provider payout" : "Request provider payout"}</button>}</> : order ? <><p className="pact-checkout-state">Order <code>{order.orderId}</code> is awaiting buyer approval.</p><div className="pact-review-actions"><button className="pact-primary" type="button" onClick={capture} disabled={busy}>{busy ? "Checking…" : "I approved in PayPal — capture"}</button>{order.approvalUrl && <a className="pact-secondary" href={order.approvalUrl} target="_blank" rel="noreferrer">Open PayPal approval</a>}</div></> : <button className="pact-primary" type="button" onClick={createOrder} disabled={busy}>{busy ? "Connecting to PayPal…" : `Start PayPal checkout · $${(milestone.amount_cents / 100).toFixed(2)}`}</button>}
     {message && <p className="pact-form-error" role="status">{message}</p>}
   </div>;
 }

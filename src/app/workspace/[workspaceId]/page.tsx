@@ -8,7 +8,7 @@ import "../../login/signin.css";
 export const instant = false;
 
 type Pact = { id: string; title: string; status: string; budget_cents: number; milestones: Array<{ title: string; position: number; amount_cents: number }> };
-type Payment = { pact_id: string; milestone_id: string; status: string; amount_cents: number; paypal_order_id: string; created_at: string };
+type Payment = { pact_id: string; milestone_id: string; status: string; payout_status: string | null; amount_cents: number; paypal_order_id: string; created_at: string };
 
 async function createPact(formData: FormData) {
   "use server";
@@ -44,7 +44,7 @@ function PactsView({ workspaceId, pacts, isOwner }: { workspaceId: string; pacts
 }
 
 function PaymentsView({ isOwner, payments, unavailable }: { isOwner: boolean; payments: Payment[]; unavailable: boolean }) {
-  return <section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Payment ledger</h2><p>Track PayPal capture events separately from provider payout status.</p></div></div>{!isOwner ? <div className="workspace-empty"><strong>Owner-only ledger</strong>Payment records are visible to the workspace owner.</div> : unavailable ? <div className="workspace-empty"><strong>Payment ledger unavailable</strong>Apply the latest Supabase workflow migration to enable persisted payment events.</div> : payments.length ? <div>{payments.map((payment) => <div className="workspace-list-card" key={`${payment.pact_id}-${payment.milestone_id}`}><span className="workspace-avatar" aria-hidden="true">$</span><span><strong>${(payment.amount_cents / 100).toFixed(2)} · {payment.status.replaceAll("_", " ")}</strong><small>Order {payment.paypal_order_id}</small></span><span className="workspace-pill">{payment.status}</span></div>)}</div> : <div className="workspace-empty"><strong>No payment events yet.</strong>Events appear after an approved milestone enters PayPal checkout.</div>}</section>;
+  return <section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Payment ledger</h2><p>Track PayPal capture events separately from provider payout status.</p></div></div>{!isOwner ? <div className="workspace-empty"><strong>Owner-only ledger</strong>Payment records are visible to the workspace owner.</div> : unavailable ? <div className="workspace-empty"><strong>Payment ledger unavailable</strong>Apply the latest Supabase workflow migration to enable persisted payment events.</div> : payments.length ? <div>{payments.map((payment) => <div className="workspace-list-card" key={`${payment.pact_id}-${payment.milestone_id}`}><span className="workspace-avatar" aria-hidden="true">$</span><span><strong>${(payment.amount_cents / 100).toFixed(2)} · {payment.status.replaceAll("_", " ")}</strong><small>Order {payment.paypal_order_id} · payout {payment.payout_status?.replaceAll("_", " ") ?? "not requested"}</small></span><span className="workspace-pill">{payment.status}</span></div>)}</div> : <div className="workspace-empty"><strong>No payment events yet.</strong>Events appear after an approved milestone enters PayPal checkout.</div>}</section>;
 }
 
 function SettingsView({ workspaceName, role, email, workspaceId, profile }: { workspaceName: string; role: string; email: string | null | undefined; workspaceId: string; profile: boolean }) {
@@ -69,7 +69,7 @@ export default async function WorkspaceDetail({ params, searchParams }: { params
   const active = view === "pacts" ? "pacts" : view === "payments" ? "payments" : view === "settings" || view === "profile" ? "settings" : "overview";
   const pactIds = normalizedPacts.map((pact) => pact.id);
   const paymentsResult = view === "payments" && isOwner && pactIds.length
-    ? await supabase.from("pact_payment_events").select("pact_id, milestone_id, status, amount_cents, paypal_order_id, created_at").in("pact_id", pactIds).order("created_at", { ascending: false })
+    ? await supabase.from("pact_payment_events").select("pact_id, milestone_id, status, payout_status, amount_cents, paypal_order_id, created_at").in("pact_id", pactIds).order("created_at", { ascending: false })
     : { data: [], error: null };
   const payments = (paymentsResult.data ?? []) as Payment[];
   const title = active === "overview" ? workspaceName : active === "pacts" ? "My Pacts" : active === "payments" ? "Payments" : view === "profile" ? "Profile" : "Settings";
