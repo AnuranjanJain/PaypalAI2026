@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestId, paypalError } from "@/lib/paypal";
+import { normalizePayoutStatus, type PayoutStatus } from "@/lib/payout";
 
 type PayoutDetails = {
   pact_id: string;
@@ -12,13 +13,6 @@ type PayoutDetails = {
   recipient_email: string;
   payout_batch_id: string | null;
 };
-
-function normalizePayoutStatus(value: unknown): "payout_pending" | "paid_to_provider" | "failed" | null {
-  if (value === "SUCCESS" || value === "COMPLETED") return "paid_to_provider";
-  if (value === "PENDING" || value === "PROCESSING" || value === "NEW") return "payout_pending";
-  if (value === "DENIED" || value === "BLOCKED" || value === "FAILED" || value === "CANCELED") return "failed";
-  return null;
-}
 
 async function getAccessToken(baseUrl: string, credentials: string) {
   const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
@@ -66,7 +60,7 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
     if (!accessToken) return NextResponse.json({ error: "PayPal Payouts authorization is unavailable for this account.", payoutStatus: "blocked" }, { status: 503 });
 
     let payoutBatchId = details.payout_batch_id;
-    let payoutStatus: "payout_pending" | "paid_to_provider" | "failed" | null = null;
+    let payoutStatus: PayoutStatus | null = null;
     if (details.payout_status === "payout_pending" && payoutBatchId) {
       const reconciliation = await fetch(`${baseUrl}/v1/payments/payouts/${encodeURIComponent(payoutBatchId)}`, {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
