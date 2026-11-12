@@ -31,8 +31,8 @@ The prototype is designed for the hackathon requirements: a working web experien
 ## Current integration boundaries and limitations
 
 - `/walkthrough` uses seeded client-side state so the judge journey is repeatable without credentials. It is separate from authenticated workspaces.
-- The visible approval interaction calls the PayPal order and capture routes. Without credentials those routes return a labelled sandbox fallback; with credentials they call PayPal Sandbox.
-- `POST /api/paypal/order` creates a PayPal sandbox order when credentials are configured and returns a deterministic fallback otherwise. `POST /api/paypal/order/[orderId]/capture` captures a configured sandbox order or completes a fallback order.
+- The visible approval interaction calls the PayPal order and capture routes. PayPal Sandbox credentials are required; an unavailable PayPal capability remains blocked and is never presented as paid.
+- `POST /api/paypal/order` creates a PayPal Sandbox order when credentials are configured. `POST /api/paypal/order/[orderId]/capture` captures that order only after PayPal confirms buyer approval.
 - PayPal Orders lifecycle: create the order (`CREATED`) with `POST /api/paypal/order`, send the user to the returned PayPal approval link, receive the user at the validated `returnUrl` or `cancelUrl`, then capture the approved order with `POST /api/paypal/order/[orderId]/capture`. Preserve the returned PayPal links and reconcile the final state from webhooks in production. Redirect URLs must be HTTPS (localhost HTTP is allowed for local development).
 - `POST /api/pact/verify` uses a validated structured AI Responses API adapter when `AI_API_KEY` (or `MODEL_API_KEY`) and `AI_API_URL` are configured, and falls back to the deterministic verifier when the provider is unavailable or returns invalid output.
 - The prototype does not claim legal escrow, autonomous production settlement, production fraud detection, or a legally binding contract. The correct description is **sandbox milestone-controlled settlement**.

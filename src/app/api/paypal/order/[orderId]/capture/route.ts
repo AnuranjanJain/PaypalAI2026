@@ -4,7 +4,7 @@ import { getRequestId, paypalError } from "@/lib/paypal";
 export async function POST(request: Request, context: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await context.params;
   if (!orderId || !/^[A-Za-z0-9_-]{3,100}$/.test(orderId)) return paypalError(400, "A valid orderId is required.");
-  if (orderId.startsWith("demo_")) return NextResponse.json({ mode: "demo-fallback", orderId, status: "COMPLETED" });
+  if (orderId.startsWith("demo_")) return paypalError(409, "This illustrative order cannot be marked paid without PayPal confirmation.");
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) return paypalError(503, "PayPal credentials are not configured.");
   const baseUrl = (process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
   const credentials = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString("base64");

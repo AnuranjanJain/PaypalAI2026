@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (body?.cancelUrl !== undefined && !cancelUrl) return paypalError(400, "cancelUrl must be an absolute HTTPS URL.");
 
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
-    return NextResponse.json({ mode: "demo-fallback", orderId: `demo_order_${crypto.randomUUID()}`, status: "CREATED", amount, currency });
+    return paypalError(503, "PayPal Sandbox credentials are not configured.");
   }
   const baseUrl = (process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com").replace(/\/$/, "");
   const credentials = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString("base64");
