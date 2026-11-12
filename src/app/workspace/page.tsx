@@ -106,10 +106,10 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
     {deleted === "1" && <div className="workspace-alert" role="status">Workspace deleted. Its Pact records and payment history were removed.</div>}
     {error && <div className="workspace-alert" role="alert">Workspaces could not be loaded. Check that the database migration has been applied.</div>}
     {!error && <section className="workspace-panel" aria-labelledby="path-heading">
-      <div className={styles.pathIntro}><h2 id="path-heading">What are you here to do?</h2><p>Pact does not lock your account to one role. Start a project as an Owner / Buyer, join someone else’s project as a Provider / Seller, or use both paths.</p></div>
+      <div className={styles.pathIntro}><h2 id="path-heading">Choose your path</h2><p>Use one account to fund projects, deliver work, or do both.</p></div>
       <div className={styles.pathGrid}>
-        <RolePath kind="owner" title="Fund and review work" copy="Create a workspace, define milestone payments, invite a provider, and approve completed work." href="#create-workspace" action="Start a project" />
-        <RolePath kind="provider" title="Deliver and get paid" copy="Open an invitation from a project owner, submit evidence, respond to revisions, and follow payment status." href="#join-pact" action="Join a project" />
+        <RolePath kind="owner" title="Fund and review work" copy="Create agreements, set milestones, and approve completed work." href="#create-workspace" action="Create workspace" />
+        <RolePath kind="provider" title="Deliver and get paid" copy="Join an invitation, submit evidence, and track payment status." href="#join-pact" action="Use invitation" />
       </div>
       <RoleSummary memberships={memberships} />
     </section>}

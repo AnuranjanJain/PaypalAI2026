@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getRequestId, paypalError } from "@/lib/paypal";
+import { tryCreateAdminClient } from "@/lib/supabase/admin";
+import { getRequestId, getStableRequestId, paypalError } from "@/lib/paypal";
 import { normalizePayoutStatus, type PayoutStatus } from "@/lib/payout";
+import { emitPactAgentEvent } from "@/lib/agents/events";
 
 type PayoutDetails = {
   pact_id: string;
@@ -33,6 +35,8 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return paypalError(401, "Sign in to request a provider payout.");
+  const admin = tryCreateAdminClient();
+  if (!admin) return paypalError(503, "Payment storage is not configured for server-side settlement.");
 
   const { data, error } = await supabase.rpc("get_pact_payout_details", { target_order_id: orderId });
   const details = (Array.isArray(data) ? data[0] : data) as PayoutDetails | null;
@@ -46,6 +50,13 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
   if (details.payout_status === "paid_to_provider" || details.status === "paid_to_provider") {
     return NextResponse.json({ orderId, payoutStatus: "paid_to_provider", payoutBatchId: details.payout_batch_id });
   }
+
+  const [{ data: openDispute }, { data: pendingScope }] = await Promise.all([
+    supabase.from("disputes").select("id").eq("pact_id", details.pact_id).eq("milestone_id", details.milestone_id).in("status", ["open", "under_review"]).limit(1).maybeSingle(),
+    supabase.from("scope_change_orders").select("id").eq("pact_id", details.pact_id).eq("milestone_id", details.milestone_id).in("status", ["draft", "pending_owner", "pending_provider"]).limit(1).maybeSingle(),
+  ]);
+  if (openDispute) return NextResponse.json({ error: "Provider payout is frozen while the milestone dispute is open.", payoutStatus: "blocked" }, { status: 409 });
+  if (pendingScope) return NextResponse.json({ error: "Provider payout is blocked until the scope change is resolved.", payoutStatus: "blocked" }, { status: 409 });
 
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
@@ -78,7 +89,7 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
     }
 
     if (payoutStatus) {
-      const { error: updateError } = await supabase.rpc("record_pact_payout_status", {
+      const { error: updateError } = await admin.rpc("record_pact_payout_status", {
         target_order_id: orderId,
         target_status: payoutStatus,
         target_recipient: details.recipient_email,
@@ -86,22 +97,31 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
         target_error: payoutStatus === "failed" ? "PayPal reported a failed payout." : null,
       });
       if (updateError) return paypalError(502, "PayPal returned a payout result, but the Pact ledger could not be updated.");
+      await emitPactAgentEvent(supabase, {
+        pactId: details.pact_id,
+        aggregateType: "payment",
+        aggregateId: details.milestone_id,
+        eventType: payoutStatus === "paid_to_provider" ? "payment.paid" : payoutStatus === "failed" ? "payment.failed" : "payment.payout_pending",
+        payload: { milestoneId: details.milestone_id, orderId, payoutBatchId, payoutStatus },
+        idempotencyKey: `payment.payout:${orderId}:${payoutStatus}`,
+      });
       return NextResponse.json({ orderId, payoutStatus, payoutBatchId });
     }
 
-    if (details.status !== "captured" && details.status !== "failed") {
+    const retryingFailedPayout = details.status === "failed" && details.payout_status === "failed";
+    if (details.status !== "captured" && !retryingFailedPayout) {
       return paypalError(409, "Capture the milestone before requesting a provider payout.");
     }
 
     if (!payoutStatus) {
-      payoutBatchId = `pact-${orderId}-${crypto.randomUUID().slice(0, 8)}`;
+      payoutBatchId = getStableRequestId("pact-payout", orderId);
       const amount = (Number(details.amount_cents) / 100).toFixed(2);
       const payoutResponse = await fetch(`${baseUrl}/v1/payments/payouts`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
-          "PayPal-Request-Id": getRequestId(request, `pact-payout-${orderId}`),
+          "PayPal-Request-Id": getRequestId(request, "pact-payout-request", orderId),
         },
         body: JSON.stringify({
           sender_batch_header: { sender_batch_id: payoutBatchId, email_subject: "PayPal Pact milestone payout" },
@@ -117,7 +137,7 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
       payoutStatus = normalizePayoutStatus(payload.batch_header?.batch_status) ?? "payout_pending";
     }
 
-    const { error: updateError } = await supabase.rpc("record_pact_payout_status", {
+    const { error: updateError } = await admin.rpc("record_pact_payout_status", {
       target_order_id: orderId,
       target_status: payoutStatus,
       target_recipient: details.recipient_email,
@@ -125,6 +145,14 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
       target_error: null,
     });
     if (updateError) return paypalError(502, "PayPal returned a payout result, but the Pact ledger could not be updated.");
+    await emitPactAgentEvent(supabase, {
+      pactId: details.pact_id,
+      aggregateType: "payment",
+      aggregateId: details.milestone_id,
+      eventType: payoutStatus === "paid_to_provider" ? "payment.paid" : payoutStatus === "failed" ? "payment.failed" : "payment.payout_pending",
+      payload: { milestoneId: details.milestone_id, orderId, payoutBatchId, payoutStatus },
+      idempotencyKey: `payment.payout:${orderId}:${payoutStatus}`,
+    });
     return NextResponse.json({ orderId, payoutStatus, payoutBatchId });
   } catch {
     return NextResponse.json({ error: "PayPal Payouts is temporarily unavailable. Capture remains recorded.", payoutStatus: "blocked" }, { status: 503 });

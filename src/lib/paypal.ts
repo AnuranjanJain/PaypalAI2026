@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const SUPPORTED_CURRENCIES = new Set(["USD", "EUR", "GBP", "INR", "CAD", "AUD"]);
 
 export function parseAmount(value: unknown): string | null {
@@ -31,10 +33,17 @@ export function parseRedirectUrl(value: unknown): string | null {
 }
 
 /** Use a caller idempotency key when supplied so retries cannot create duplicate orders. */
-export function getRequestId(request: Request, prefix: string): string {
+export function getRequestId(request: Request, prefix: string, fallbackValue?: string): string {
   const supplied = request.headers.get("Idempotency-Key")?.trim();
   if (supplied && /^[A-Za-z0-9._:-]{1,72}$/.test(supplied)) return `${prefix}-${supplied}`;
+  if (fallbackValue) return getStableRequestId(prefix, fallbackValue);
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+/** Generate a stable PayPal idempotency identifier for retries without a client key. */
+export function getStableRequestId(prefix: string, value: string): string {
+  const digest = createHash("sha256").update(value).digest("hex").slice(0, 28);
+  return `${prefix}-${digest}`;
 }
 
 export function paypalError(status: number, message: string) {

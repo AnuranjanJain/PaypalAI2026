@@ -1,0 +1,63 @@
+/* Shared refinements loaded after the legacy dashboard stylesheet. */
+.workspace-brand-mark {
+  width: 29px;
+  height: 29px;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.workspace-brand-mark img {
+  display: block;
+  object-fit: contain;
+}
+
+.workspace-profile-card {
+  min-width: 0;
+}
+
+.workspace-profile-card > div {
+  min-width: 0;
+}
+
+.workspace-profile-card > .workspace-profile-avatar {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin-top: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  line-height: 1;
+  font-size: 12px;
+}
+
+.workspace-profile-card > div > span {
+  line-height: 1.35;
+}
+
+.workspace-profile-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-panel .workspace-note {
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .workspace-main {
+    padding-top: 16px;
+  }
+}
+
+.pact-automation-storage-warning {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(185, 132, 38, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(255, 247, 226, 0.8);
+  color: #704f16;
+}

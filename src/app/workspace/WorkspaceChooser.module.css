@@ -1,46 +1,54 @@
 .pathIntro {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .pathIntro h2 {
   margin: 0;
   color: #213e52;
-  font-size: 17px;
+  font-size: 18px;
+  letter-spacing: -.02em;
 }
 
 .pathIntro p {
-  max-width: 650px;
-  margin: 6px 0 0;
+  max-width: 540px;
+  margin: 7px 0 0;
   color: #7f919e;
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .pathGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .pathCard {
   display: flex;
-  min-height: 188px;
+  min-height: 172px;
   flex-direction: column;
   align-items: flex-start;
-  padding: 18px;
+  padding: 19px;
   border: 1px solid #dce8ef;
-  border-radius: 9px;
-  background: #fbfdfe;
+  border-radius: 10px;
+  background: #fff;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.pathCard:hover {
+  transform: translateY(-2px);
+  border-color: #bdd8ea;
+  box-shadow: 0 10px 22px #1c557b12;
 }
 
 .pathCardOwner {
   border-color: #cfe3f5;
-  background: #f7fbff;
+  background: linear-gradient(180deg, #f8fcff 0%, #fff 100%);
 }
 
 .pathCardProvider {
   border-color: #d7e9df;
-  background: #f8fcfa;
+  background: linear-gradient(180deg, #f8fdf9 0%, #fff 100%);
 }
 
 .roleEyebrow {
@@ -50,16 +58,17 @@
 }
 
 .pathCard h3 {
-  margin: 12px 0 5px;
+  margin: 14px 0 5px;
   color: #213e52;
-  font-size: 15px;
+  font-size: 16px;
+  letter-spacing: -.015em;
 }
 
 .pathCard p {
   margin: 0;
   color: #718694;
   font-size: 11px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .pathLink {
@@ -67,7 +76,7 @@
   align-items: center;
   gap: 7px;
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 14px;
   color: #1268b8;
   font-size: 11px;
   font-weight: 600;
@@ -81,9 +90,10 @@
 .roleSummary {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin: 17px 0 0;
-  padding-top: 14px;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 18px 0 0;
+  padding: 14px 2px 0;
   border-top: 1px solid #edf1f4;
   color: #6e8290;
   font-size: 11px;

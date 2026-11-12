@@ -12,6 +12,13 @@ export const instant = false;
 type Pact = { id: string; title: string; status: string; budget_cents: number; milestones: Array<{ title: string; position: number; amount_cents: number }> };
 type Payment = { pact_id: string; milestone_id: string; status: string; payout_status: string | null; amount_cents: number; paypal_order_id: string; created_at: string };
 
+type WorkspaceRelation = { name: string } | { name: string }[] | null;
+
+function workspaceNameFromRelation(value: WorkspaceRelation): string {
+  if (Array.isArray(value)) return value[0]?.name ?? "Workspace";
+  return value?.name ?? "Workspace";
+}
+
 async function createPact(formData: FormData) {
   "use server";
   const workspaceId = formData.get("workspaceId");
@@ -68,7 +75,7 @@ function PaymentsView({ isOwner, payments, unavailable, pacts }: { isOwner: bool
 function SettingsView({ workspaceName, role, email, workspaceId, profile, actionError }: { workspaceName: string; role: string; email: string | null | undefined; workspaceId: string; profile: boolean; actionError?: string }) {
   const roleLabel = workspaceRoleLabel(role);
   if (profile) return <section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Profile</h2><p>Your signed-in account and workspace role.</p></div></div><div className="workspace-profile-card"><span className="workspace-profile-avatar">{(email ?? "P").slice(0, 2).toUpperCase()}</span><div><strong>{email}</strong><span>{workspaceName} · {roleLabel} access</span></div></div><p className="workspace-note">Your account can be an Owner / Buyer in one workspace and a Provider / Seller in another. Sign out from the workspace navigation when you are finished.</p></section>;
-  return <div className="workspace-view-grid"><section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Workspace settings</h2><p>Access and project defaults for this workspace.</p></div></div>{actionError === "delete-owner" && <div className="workspace-alert" role="alert">Only the workspace owner can delete this workspace.</div>}{actionError === "delete" && <div className="workspace-alert" role="alert">Workspace deletion could not be completed. Confirm the latest Supabase migration is applied, then try again.</div>}<div className="workspace-profile-card"><span className="workspace-profile-avatar">{workspaceName.slice(0, 2).toUpperCase()}</span><div><strong>{workspaceName}</strong><span>{roleLabel} access · members are managed through Pact invitations</span></div></div><p className="workspace-note">Workspace renaming and role administration are not enabled in this release. Invite providers from an individual Pact to keep access scoped.</p>{role === "owner" && <DeleteWorkspaceForm workspaceId={workspaceId} workspaceName={workspaceName} action={deleteWorkspace} />}</section><section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Your profile</h2><p>Account identity used for invitations and reviews.</p></div></div><div className="workspace-profile-card"><span className="workspace-profile-avatar">{(email ?? "P").slice(0, 2).toUpperCase()}</span><div><strong>{email}</strong><span>Signed in with Supabase</span></div></div><Link className="workspace-action secondary" href={`/workspace/${workspaceId}?view=profile`}>Open profile</Link></section></div>;
+  return <div className="workspace-view-grid"><section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Workspace settings</h2><p>Access and project defaults for this workspace.</p></div></div>{actionError === "delete-owner" && <div className="workspace-alert" role="alert">Only the workspace owner can delete this workspace.</div>}{actionError === "delete" && <div className="workspace-alert" role="alert">Workspace deletion could not be completed. Confirm the latest Supabase migration is applied, then try again.</div>}<div className="workspace-profile-card"><span className="workspace-profile-avatar">{workspaceName.slice(0, 1).toUpperCase()}</span><div><strong>{workspaceName}</strong><span>{roleLabel} access · members are managed through Pact invitations</span></div></div><p className="workspace-note">Providers join through Pact invitations. Owner permissions stay scoped to this workspace.</p>{role === "owner" && <DeleteWorkspaceForm workspaceId={workspaceId} workspaceName={workspaceName} action={deleteWorkspace} />}</section><section className="workspace-panel"><div className="workspace-panel-heading"><div><h2>Your profile</h2><p>Account identity used for invitations and reviews.</p></div></div><div className="workspace-profile-card"><span className="workspace-profile-avatar">{(email ?? "P").slice(0, 1).toUpperCase()}</span><div><strong>{email}</strong><span>Signed in with Supabase</span></div></div><Link className="workspace-action secondary" href={`/workspace/${workspaceId}?view=profile`}>Open profile</Link></section></div>;
 }
 
 export default async function WorkspaceDetail({ params, searchParams }: { params: Promise<{ workspaceId: string }>; searchParams: Promise<{ error?: string; view?: string }> }) {
@@ -83,7 +90,7 @@ export default async function WorkspaceDetail({ params, searchParams }: { params
   if (!membership) redirect("/workspace");
   const { data: pacts, error } = await supabase.from("pacts").select("id, title, status, budget_cents, milestones(title, position, amount_cents)").eq("workspace_id", workspaceId).order("created_at", { ascending: false });
   const normalizedPacts = (pacts ?? []) as Pact[];
-  const workspaceName = membership.workspaces && "name" in membership.workspaces ? String(membership.workspaces.name) : "Workspace";
+  const workspaceName = workspaceNameFromRelation(membership.workspaces as WorkspaceRelation);
   const isOwner = membership.role === "owner";
   const active = view === "pacts" ? "pacts" : view === "payments" ? "payments" : view === "settings" || view === "profile" ? "settings" : "overview";
   const pactIds = normalizedPacts.map((pact) => pact.id);

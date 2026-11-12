@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { workspaceRoleLabel } from "@/lib/workspace-role";
 import PactWorkflow from "./PactWorkflow";
+import PactAutomationClient from "./PactAutomationClient";
 import "../../../../login/signin.css";
 
 export const instant = false;
@@ -41,6 +42,20 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
     .eq("pact_id", pactId)
     .in("status", ["created", "captured", "payout_pending", "paid_to_provider", "failed"])
     .order("created_at", { ascending: false });
+  const [{ data: connections, error: connectionsError }, { data: agentRuns, error: agentRunsError }, { data: connectorEvents, error: connectorEventsError }, { data: scopeChanges, error: scopeChangesError }, { data: disputes, error: disputesError }, { data: agentActions, error: agentActionsError }, { data: sourceMappings, error: sourceMappingsError }, { data: negotiationOffers, error: negotiationOffersError }] = await Promise.all([
+    supabase.from("connector_connections_public").select("id, provider, connected_by, external_account_name, resource_id, resource_name, resource_url, status, last_error").eq("pact_id", pactId).order("updated_at", { ascending: false }),
+    supabase.from("agent_runs").select("id, agent_name, status, output_mode, created_at, updated_at, provider, model, error_message").eq("pact_id", pactId).order("updated_at", { ascending: false }).limit(20),
+    supabase.from("connector_events").select("id, provider, event_type, source_url, occurred_at, created_at").eq("pact_id", pactId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("scope_change_orders").select("id, title, description, severity, status, created_at, amount_delta_cents").eq("pact_id", pactId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("disputes").select("id, category, statement, status, risk_score, created_at").eq("pact_id", pactId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("agent_actions").select("id, action_type, target_type, status, proposal, created_at").eq("pact_id", pactId).order("created_at", { ascending: false }).limit(20),
+    supabase.from("pact_milestone_source_mappings").select("milestone_id, connection_id, enabled").eq("pact_id", pactId).eq("enabled", true),
+    supabase.from("negotiation_offers").select("id, session_id, terms, rationale, status, accepted_by_owner, accepted_by_provider, created_at").eq("pact_id", pactId).order("created_at", { ascending: false }).limit(20),
+  ]);
+  const automationStorageWarning = [connectionsError, agentRunsError, connectorEventsError, scopeChangesError, disputesError, agentActionsError, sourceMappingsError, negotiationOffersError].some((error) => {
+    const message = error?.message?.toLowerCase() ?? "";
+    return Boolean(error && (message.includes("schema cache") || message.includes("does not exist") || error.code === "PGRST205"));
+  });
   const milestones = [...pact.milestones].sort((a, b) => a.position - b.position);
   return (
     <main className="pact-page">
@@ -114,6 +129,23 @@ export default async function PactDetail({ params }: { params: Promise<{ workspa
             links: Array.isArray(submission.links) ? submission.links : [],
           }))}
           unavailable={Boolean(submissionsError)}
+        />
+        <PactAutomationClient
+          workspaceId={workspaceId}
+          pactId={pactId}
+          currentUserId={user.id}
+          isOwner={isOwner}
+          connections={(connections ?? []) as never[]}
+          agentRuns={(agentRuns ?? []) as never[]}
+          connectorEvents={(connectorEvents ?? []) as never[]}
+          scopeChanges={(scopeChanges ?? []) as never[]}
+          disputes={(disputes ?? []) as never[]}
+          agentActions={(agentActions ?? []) as never[]}
+          sourceMappings={(sourceMappings ?? []) as never[]}
+          paymentEvents={(paymentEvents ?? []) as never[]}
+          milestones={milestones}
+          negotiationOffers={(negotiationOffers ?? []) as never[]}
+          storageWarning={automationStorageWarning ? "Connector and agent storage is not enabled in this Supabase project yet. Apply the latest migrations, then refresh this Pact." : undefined}
         />
       </div>
     </main>

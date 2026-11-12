@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { emitPactAgentEvent } from "@/lib/agents/events";
 
 export type WorkflowActionState = { error?: string; success?: string };
 
@@ -44,13 +45,23 @@ export async function submitPactEvidence(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/workspace/${workspaceId}/pact/${pactId}`)}`);
-  const { error } = await supabase.rpc("submit_pact_evidence", {
+  const { data: submissionId, error } = await supabase.rpc("submit_pact_evidence", {
     target_pact: pactId,
     target_milestone: milestoneId,
     submission_notes: notes.trim(),
     submission_links: links,
   });
   if (error) return { error: error.message.includes("already") ? "This milestone is already under review." : "Evidence could not be submitted. Check your Pact access and try again." };
+  if (typeof submissionId === "string") {
+    await emitPactAgentEvent(supabase, {
+      pactId,
+      aggregateType: "submission",
+      aggregateId: submissionId,
+      eventType: "evidence.submitted",
+      payload: { milestoneId, submissionId, notesLength: notes.trim().length, linkCount: links.length },
+      idempotencyKey: `evidence.submitted:${submissionId}`,
+    });
+  }
   revalidatePath(`/workspace/${workspaceId}/pact/${pactId}`);
   return { success: "Evidence submitted for owner review." };
 }
@@ -86,12 +97,21 @@ export async function reviewPactSubmission(
     }
     if (!verification?.eligible) return { error: "Run an eligible evidence check before approving this milestone." };
   }
+  const { data: submissionContext } = await supabase.from("pact_submissions").select("milestone_id").eq("id", submissionId).eq("pact_id", pactId).maybeSingle();
   const { error } = await supabase.rpc("review_pact_submission", {
     target_submission: submissionId,
     decision,
     reviewer_note: typeof note === "string" ? note.trim() : null,
   });
   if (error) return { error: "This review could not be saved. It may already have been reviewed." };
+  await emitPactAgentEvent(supabase, {
+    pactId,
+    aggregateType: "submission",
+    aggregateId: submissionId,
+    eventType: decision === "approved" ? "submission.approved" : "submission.revision_requested",
+      payload: { submissionId, milestoneId: submissionContext?.milestone_id ?? null, decision, autoPayment: decision === "approved" },
+    idempotencyKey: `submission.${decision}:${submissionId}`,
+  });
   revalidatePath(`/workspace/${workspaceId}/pact/${pactId}`);
   return { success: decision === "approved" ? "Milestone approved. PayPal checkout is ready." : "Revision requested. The provider can resubmit evidence." };
 }

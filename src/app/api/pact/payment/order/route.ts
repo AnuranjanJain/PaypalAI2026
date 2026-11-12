@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { getRequestId, parseRedirectUrl, paypalError } from "@/lib/paypal";
+import { emitPactAgentEvent } from "@/lib/agents/events";
 
 function validId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
@@ -23,6 +25,14 @@ export async function POST(request: Request) {
   if (membership?.role !== "owner") return paypalError(403, "Only the Pact owner can start checkout.");
   const { data: milestone } = await supabase.from("milestones").select("id, amount_cents, status").eq("id", body.milestoneId).eq("pact_id", body.pactId).maybeSingle();
   if (!milestone || milestone.status !== "approved") return paypalError(409, "Approve the milestone before starting PayPal checkout.");
+  const [{ data: openDispute }, { data: pendingScope }] = await Promise.all([
+    supabase.from("disputes").select("id").eq("pact_id", body.pactId).eq("milestone_id", body.milestoneId).in("status", ["open", "under_review"]).limit(1).maybeSingle(),
+    supabase.from("scope_change_orders").select("id").eq("pact_id", body.pactId).eq("milestone_id", body.milestoneId).in("status", ["draft", "pending_owner", "pending_provider"]).limit(1).maybeSingle(),
+  ]);
+  if (openDispute) return paypalError(409, "Resolve the open milestone dispute before starting checkout.");
+  if (pendingScope) return paypalError(409, "Resolve the pending scope change before starting checkout.");
+  const admin = tryCreateAdminClient();
+  if (!admin) return paypalError(503, "Payment storage is not configured for server-side settlement.");
 
   const existing = await supabase.from("pact_payment_events")
     .select("paypal_order_id, approval_url, status, payout_status")
@@ -47,7 +57,7 @@ export async function POST(request: Request) {
     const order = await orderResponse.json() as { id?: string; status?: string; links?: unknown };
     if (!order.id) return paypalError(502, "PayPal returned an invalid order.");
     const approvalUrl = Array.isArray(order.links) ? (order.links as Array<{ rel?: string; href?: string }>).find((link) => link.rel === "approve")?.href ?? null : null;
-    const { error: insertError } = await supabase.rpc("record_pact_payment_event", { target_pact: body.pactId, target_milestone: body.milestoneId, target_order_id: order.id, target_approval_url: approvalUrl, target_amount_cents: milestone.amount_cents });
+    const { error: insertError } = await admin.rpc("record_pact_payment_event", { target_pact: body.pactId, target_milestone: body.milestoneId, target_order_id: order.id, target_approval_url: approvalUrl, target_amount_cents: milestone.amount_cents });
     if (insertError) {
       // A concurrent request may have won the milestone's unique active-order race.
       // Return that durable order so the caller can continue checkout instead of creating another one.
@@ -63,6 +73,14 @@ export async function POST(request: Request) {
       }
       return paypalError(409, "The PayPal order was created but could not be recorded. Reconcile this order before retrying.");
     }
+    await emitPactAgentEvent(supabase, {
+      pactId: body.pactId,
+      aggregateType: "payment",
+      aggregateId: body.milestoneId,
+      eventType: "payment.order_created",
+      payload: { milestoneId: body.milestoneId, orderId: order.id, amountCents: milestone.amount_cents },
+      idempotencyKey: `payment.order_created:${order.id}`,
+    });
     return NextResponse.json({ mode: "paypal-sandbox", orderId: order.id, status: order.status, links: order.links, approvalUrl });
   } catch { return paypalError(502, "PayPal is temporarily unavailable."); }
 }

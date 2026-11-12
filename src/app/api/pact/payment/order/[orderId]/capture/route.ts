@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { getRequestId, paypalError } from "@/lib/paypal";
+import { emitPactAgentEvent } from "@/lib/agents/events";
 
 export async function POST(request: Request, context: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await context.params;
@@ -8,6 +10,8 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return paypalError(401, "Sign in to capture a payment.");
+  const admin = tryCreateAdminClient();
+  if (!admin) return paypalError(503, "Payment storage is not configured for server-side settlement.");
   const { data: event } = await supabase.from("pact_payment_events").select("id, pact_id, milestone_id, status, owner_id, payout_status").eq("paypal_order_id", orderId).maybeSingle();
   if (!event || event.owner_id !== user.id) return paypalError(404, "Payment order not found.");
   if (event.status === "captured" || event.status === "payout_pending" || event.status === "paid_to_provider") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: event.payout_status ?? "not_requested" });
@@ -28,13 +32,21 @@ export async function POST(request: Request, context: { params: Promise<{ orderI
       if (reconciliation.ok) capture = await reconciliation.json() as { status?: string };
     }
     if (["VOIDED", "CANCELED", "DENIED", "FAILED"].includes(capture.status ?? "")) {
-      const { error: failureError } = await supabase.rpc("mark_pact_payment_failed", { target_order_id: orderId });
+      const { error: failureError } = await admin.rpc("mark_pact_payment_failed", { target_order_id: orderId });
       if (failureError) return paypalError(502, "PayPal canceled the order, but the Pact ledger could not release it for retry.");
       return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "FAILED", error: "PayPal canceled this order. Start a new checkout for the milestone." }, { status: 409 });
     }
     if (capture.status !== "COMPLETED") return NextResponse.json({ mode: "paypal-sandbox", orderId, status: capture.status ?? "PENDING" }, { status: captureResponse.ok ? 409 : 502 });
-    const { error: ledgerError } = await supabase.rpc("mark_pact_payment_captured", { target_order_id: orderId });
+    const { error: ledgerError } = await admin.rpc("mark_pact_payment_captured", { target_order_id: orderId });
     if (ledgerError) return paypalError(502, "PayPal reports a completed capture, but the Pact ledger could not be updated. Retry reconciliation before treating it as recorded.");
+    await emitPactAgentEvent(supabase, {
+      pactId: event.pact_id,
+      aggregateType: "payment",
+      aggregateId: event.id,
+      eventType: "payment.captured",
+      payload: { milestoneId: event.milestone_id, orderId, status: "captured" },
+      idempotencyKey: `payment.captured:${orderId}`,
+    });
     return NextResponse.json({ mode: "paypal-sandbox", orderId, status: "COMPLETED", payoutStatus: "not_requested", payoutMessage: "Capture is recorded. Request provider payout separately when PayPal Payouts is available." });
   } catch { return paypalError(502, "PayPal is temporarily unavailable."); }
 }

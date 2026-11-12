@@ -2,7 +2,7 @@
 
 **Work is verified. Progress is paid.**
 
-PayPal Pact is a PayPal AI Hackathon prototype for milestone-controlled payments. A project owner creates a Pact, a Delivery Agent checks objective evidence, and the owner accepts or requests a revision before the corresponding milestone payment can be captured.
+PayPal Pact is a PayPal AI Hackathon prototype for milestone-controlled payments. A project owner creates a Pact, both participants connect private GitHub and Figma resources, four policy-aware agents evaluate the evidence, and the owner accepts or requests a revision before the corresponding PayPal milestone payment can be captured.
 
 The public landing page explains the product and links into Supabase email or Google sign-in. The authenticated workspace flow supports account access, dynamic Owner / Buyer and Provider / Seller paths, workspace selection and creation, Pact drafts, editable budgets and milestone schedules, email-bound provider invitations, and owner-controlled workspace deletion with confirmation. A provider accepts an invitation by signing in with the invited email; acceptance activates the Pact and grants access only to that Pact. One Supabase account can be an owner in one workspace and a provider in another. `/walkthrough` is a clearly labelled, repeatable sample journey for judges.
 
@@ -24,7 +24,7 @@ The intended product rule is: **the Delivery Agent checks completion; the Projec
 
 ## Hackathon alignment
 
-PayPal is central to the product concept and integration boundary. The sandbox path uses PayPal Orders/Checkout for milestone payment creation, buyer approval, and capture, then exposes a separate provider payout request. PayPal Payouts, webhooks, and refund/cancellation handling remain capability boundaries: when Payouts is unavailable, the captured payment stays recorded and the provider payout is visibly blocked. AI is used to turn a natural-language brief into milestone acceptance criteria, compare evidence with those criteria, explain missing requirements, and flag scope changes. Owner approval remains mandatory.
+PayPal is the settlement authority. The sandbox path creates an order for the exact approved milestone, waits for buyer approval, captures the order, and records provider payout status separately. The PayPal webhook route verifies signed deliveries and reconciles capture and payout states. When Payouts is unavailable, capture remains recorded and the provider payout is visibly blocked. Meta Muse powers Progress, ScopeShield, DisputeShield, and Negotiation agents; only low-risk progress and scope checks can use a labeled deterministic fallback. Owner acceptance, negotiation decisions, buyer approval, capture, and PayPal payout confirmation remain mandatory gates.
 
 The prototype is designed for the hackathon requirements: a working web experience, a public source repository with a license, documented setup, a clear PayPal + AI explanation, and a short end-to-end demo. The Pact Ledger is an inspectable ledger surface for milestone, evidence, decision, and payment events. Sponsor tools are only described as integrations when they are present and verified in the repository.
 
@@ -36,9 +36,10 @@ The prototype is designed for the hackathon requirements: a working web experien
 - PayPal Orders lifecycle: create the order (`CREATED`) with `POST /api/paypal/order`, send the user to the returned PayPal approval link, receive the user at the validated `returnUrl` or `cancelUrl`, then capture the approved order with `POST /api/paypal/order/[orderId]/capture`. Preserve the returned PayPal links and reconcile the final state from webhooks in production. Redirect URLs must be HTTPS (localhost HTTP is allowed for local development).
 - `POST /api/pact/verify` uses a validated structured AI Responses API adapter when `AI_API_KEY` (or `MODEL_API_KEY`) and `AI_API_URL` are configured, and falls back to the deterministic verifier when the provider is unavailable or returns invalid output.
 - The prototype does not claim legal escrow, autonomous production settlement, production fraud detection, or a legally binding contract. The correct description is **sandbox milestone-controlled settlement**.
-- Authenticated accounts, workspace membership, Pact drafts, draft editing, provider invitations, evidence notes and links, owner review, verification results, and payment events use Supabase. Private file uploads and voice recordings are not enabled in this release; the UI must not imply that they were processed. Any capability not configured in the current Supabase or PayPal project is shown as unavailable or pending. The walkthrough's evidence and payment state is illustrative and must not be used to protect real transactions.
+- Authenticated accounts, workspace membership, Pact drafts, draft editing, provider invitations, evidence notes and links, owner review, verification results, connector snapshots, agent runs, exceptions, negotiations, and payment events use Supabase. The connector layer supports private GitHub repositories and Figma files with encrypted server-side tokens, one-time OAuth state, resource webhooks, normalized events, and idempotent evidence snapshots. Any capability not configured in the current Supabase, provider OAuth app, Meta Muse, or PayPal project is shown as unavailable or pending. The walkthrough's evidence and payment state is illustrative and must not be used to protect real transactions.
 - `src/proxy.ts` refreshes Supabase browser sessions at the request boundary; page, action, and API authorization checks still run independently.
 - After capture, the owner can request a separate provider payout. The payout route reconciles PayPal Payouts responses into `payout_pending`, `paid_to_provider`, or `failed`; an unavailable Payouts capability leaves the captured payment recorded and visibly blocked.
+- `/api/agents/worker` is protected by `AGENT_WORKER_SECRET` or `CRON_SECRET`. It claims one queued run at a time, persists typed output and provenance, and is safe to invoke repeatedly from a Vercel Cron job or another scheduler. `/api/connectors/reconcile` uses the same protection and refreshes expired connector tokens, detects deleted private resources, and backfills a bounded recent GitHub/Figma evidence window when a webhook was missed.
 
 ## Run locally
 
@@ -53,7 +54,9 @@ Account access requires a Supabase project:
    ```
 
    For legacy projects, `NEXT_PUBLIC_SUPABASE_ANON_KEY` is also supported. Do not put the service-role or secret key in a `NEXT_PUBLIC_` variable.
-2. In Supabase SQL Editor, run the files in `supabase/migrations/` in filename order. The third migration adds Pact editing, email-bound invitations, and Pact-specific provider access; the fourth adds persisted evidence review and payment events; the fifth repairs the draft editor function for existing projects; the sixth repairs the invitation acceptance conflict; the seventh keeps repeated acceptance and refreshed invitation links safe for the invited provider; the eighth adds payout columns; the ninth adds verification-result storage; the tenth and eleventh add payout functions; the twelfth adds the verification-recording function; the thirteenth lets a signed-in bearer see pending invitation context while acceptance remains email-bound; the fourteenth normalizes email comparisons for Google and email-auth accounts; the fifteenth requires a persisted eligible evidence check before owner approval; the sixteenth keeps the payment ledger and payout state synchronized and retryable; the seventeenth releases canceled checkout orders so they can be retried. Each file is a complete query and should be pasted into a fresh SQL editor query. Use a new project or check for conflicting objects before applying them.
+2. In Supabase SQL Editor, run every file in `supabase/migrations/` in filename order. Migrations `202611120025_connector_foundation.sql` and `202611120026_connector_participant_access.sql` add encrypted connector metadata, OAuth state, resource mapping, and connector event storage. Migration `202611120027_agent_runtime.sql` adds the immutable Pact event outbox, agent runs/actions, progress snapshots, scope changes, disputes, and negotiations. `202611120028_connector_picker_metadata.sql` adds private resource filters and Figma picker metadata, while `202611120029_security_and_payout_hardening.sql` closes direct browser writes to participant-visible tables and prevents payouts from starting after a failed capture. `202611120030_human_decisions.sql` adds participant dispute creation and two-party negotiation decisions. `202611120031_payment_mutation_hardening.sql` restricts payment order, capture, payout, and cancellation ledger mutators to the Supabase service role used by the PayPal server routes. Each file is a complete query and should be pasted into a fresh SQL editor query. Use a new project or check for conflicting objects before applying them.
+
+   If Supabase reports that a newly created table or function is missing from the schema cache, run `NOTIFY pgrst, 'reload schema';` once in the SQL Editor, wait a few seconds, and rerun `npm run check:supabase`.
 
    Paste each migration as its own complete query. If the SQL editor adds an `ALTER TABLE current_status ENABLE ROW LEVEL SECURITY` line or `-- source: dashboard` metadata inside a `$$` function body, clear those injected lines and paste the migration text again; `current_status` is a function variable, not a table.
 
@@ -61,6 +64,9 @@ Account access requires a Supabase project:
 3. In Authentication URL Configuration, set the site URL to `http://localhost:3000` and add `http://localhost:3000/auth/callback` to the redirect allowlist. For a deployed app, add its HTTPS origin and callback as well.
 4. Enable the email provider. To enable Google, create a Google OAuth web client, add the Supabase Google callback URL shown in the Supabase provider settings to Google's authorized redirect URIs, then enter that client's ID and secret in Supabase. Keep Google credentials out of this repository.
 5. Set `APP_URL` to the app's public HTTPS origin when deployed. Restart the dev server after adding environment variables. Visit `/`, choose **Sign in** or **Create account**, confirm the email if required, and choose or create a workspace. Creating a Pact opens its detail page, where the owner can edit the draft or choose **Continue setup** to invite a provider. The provider signs in with the invited email, accepts the Pact, and lands on its active detail page.
+
+6. For GitHub, the preferred path is a GitHub App with repository contents, pull request, Actions, and repository webhook administration permissions. Set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, and the PEM value in `GITHUB_APP_PRIVATE_KEY`; the installation callback is `${APP_URL}/api/connectors/github/callback`. An OAuth application is also supported with the same callback, repository read access, pull request read access, and webhook administration; set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `GITHUB_OAUTH_SCOPES` instead. For Figma, create an OAuth app with `${APP_URL}/api/connectors/figma/callback`, PKCE enabled, and `current_user:read`, `projects:read`, file-content, comments, and webhook scopes; set `FIGMA_CLIENT_ID`, `FIGMA_CLIENT_SECRET`, and `FIGMA_OAUTH_SCOPES`. Generate a 32-byte key for `CONNECTOR_TOKEN_ENCRYPTION_KEY`; never expose it through `NEXT_PUBLIC_*` variables.
+7. Configure `SUPABASE_SERVICE_ROLE_KEY`, `AGENT_WORKER_SECRET` (or `CRON_SECRET`), and the PayPal `PAYPAL_WEBHOOK_ID` in the deployment environment. Register `/api/paypal/webhook` in PayPal Developer Dashboard for capture and payout events. The webhook route rejects unsigned or unmatched deliveries and never marks a payment paid without a PayPal status. The included Vercel schedules run once daily on Hobby plans; each worker tick drains a bounded `AGENT_BATCH_SIZE` queue (12 by default). Invoke `/api/agents/worker` and `/api/connectors/reconcile` manually with the worker secret for an immediate demo run, or switch the schedules to per-minute/per-five-minute expressions on a Vercel plan that supports them.
 
 The public landing page is at `/`; the repeatable sample journey is at `/walkthrough`; authenticated workspace routes live under `/workspace`. Do not deploy seeded walkthrough payment endpoints as production transaction endpoints. A successful PayPal capture is distinct from a provider payout, and the UI must retain that distinction.
 
@@ -71,6 +77,8 @@ npm run dev
 
 Open http://localhost:3000 (or the alternate port printed by Next.js).
 
+After applying the Supabase migrations, run `npm run check:supabase`. It checks the connector, evidence, agent, dispute, and negotiation objects through the public API without printing credentials. Run `npm run check:muse` to exercise all four structured Meta Muse contracts and `npm run check:paypal` to create a small sandbox order and verify that PayPal rejects capture before buyer approval. A non-zero result means the database, AI provider, or PayPal sandbox is not ready for the authenticated Pact flow.
+
 ## Demo video
 
 The repository does not include a video binary. For a clean submission capture, record the landing page and the verified `/walkthrough` or authenticated flow at 16:9, then link the published video here. Keep the export framed to the viewport so the README embed has no letterbox bars.
@@ -78,19 +86,22 @@ The repository does not include a video binary. For a clean submission capture, 
 Useful checks:
 
 ```bash
+npm run check:supabase
+npm run check:muse
 npx eslint
 npx next build
 npm test
 ```
 
-## Architecture target
+`npm run check:supabase` is read-only. It checks the connector and agent objects in the configured Supabase schema, reports server-only configuration without printing values, verifies that GitHub OAuth or App, Figma OAuth, and `PAYPAL_WEBHOOK_ID` are present, and verifies PayPal Sandbox OAuth when its credentials are present. A missing object means migrations `202611120025` through `202611120031` still need to be run after the earlier Pact migrations.
+
+## Architecture
 
 - Next.js App Router + TypeScript
-- Server-side PayPal Orders, capture, refunds, and webhooks
-- Structured AI outputs validated before they can affect Pact state
-- PostgreSQL persistence for Pacts, milestones, evidence, approvals, payments, change orders, and audit events
-- AG Grid Pact Ledger
-- Render-hosted demo and Postman API collection
+- Server-side PayPal Orders, capture, payout reconciliation, and signed webhooks
+- Structured Meta Muse outputs validated before they can create a proposal or snapshot
+- PostgreSQL persistence for Pacts, milestones, connector evidence, approvals, payments, agents, change orders, disputes, negotiations, and audit events
+- Vercel-compatible protected worker endpoint with Supabase RLS and service-role reconciliation
 
 The target architecture represents sandbox milestone-controlled settlement: the AI verifies objective evidence, the owner approves the outcome, and PayPal moves the approved amount.
 
