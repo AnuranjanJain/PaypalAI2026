@@ -75,6 +75,7 @@ export function ConnectorSetup({
   const firstConnector = connectors.find((connector) => connector.state === "connected") ?? connectors[0];
   const [expanded, setExpanded] = useState<string | null>(firstConnector ? connectorKey(firstConnector) : null);
   const [localSelections, setLocalSelections] = useState<Record<string, string>>({});
+  const [manualResourceValues, setManualResourceValues] = useState<Record<string, string>>({});
   const [scopeValues, setScopeValues] = useState<Record<string, ConnectorScope>>({});
   const [discoveryValues, setDiscoveryValues] = useState<Record<string, ConnectorDiscovery>>({});
   const fieldId = useId();
@@ -163,11 +164,15 @@ export function ConnectorSetup({
                         </div>}
                         <label className={styles.resourceField}>
                           <span>{connector.id === "github" ? "Repository (owner/name)" : "Figma file key"}</span>
-                          <input id={`${fieldId}-${key}-manual`} placeholder={connector.id === "github" ? "acme/launch-kit" : "Paste the file key from the Figma URL"} onChange={(event) => { event.currentTarget.dataset.resource = event.target.value; }} />
+                          <input
+                            id={`${fieldId}-${key}-manual`}
+                            value={manualResourceValues[key] ?? ""}
+                            placeholder={connector.id === "github" ? "acme/launch-kit" : "Paste the file key from the Figma URL"}
+                            onChange={(event) => setManualResourceValues((current) => ({ ...current, [key]: event.target.value }))}
+                          />
                         </label>
-                        {onResourceSelect && <button type="button" className={styles.secondaryButton} disabled={connector.actionState?.status === "loading"} onClick={(event) => {
-                          const input = event.currentTarget.parentElement?.querySelector("input");
-                          const value = input?.value.trim();
+                        {onResourceSelect && <button type="button" className={styles.secondaryButton} disabled={connector.actionState?.status === "loading"} onClick={() => {
+                          const value = manualResourceValues[key]?.trim();
                           if (value) onResourceSelect(connector, value);
                         }}>{connector.actionState?.status === "loading" ? "Attaching resource…" : "Attach resource"}</button>}
                       </div>

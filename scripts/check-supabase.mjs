@@ -65,7 +65,7 @@ if (!baseUrl || !key) {
   for (const check of checks) console.log(`${check.status.padEnd(8)} ${check.table}`);
   const missing = checks.filter((check) => !check.available).length;
   if (missing > 0 || missingConfig.length > 0 || missingConnectorConfig.length > 0) {
-    if (missing > 0) console.error(`\n${missing} Supabase objects are unavailable. Apply migrations 202611120025 through 202611120030 after the earlier Pact migrations, then run this check again.`);
+    if (missing > 0) console.error(`\n${missing} Supabase objects are unavailable. Apply migrations 202611120025 through 202611120032 after the earlier Pact migrations, then run this check again.`);
     if (missingConfig.length > 0) console.error(`Missing server configuration: ${missingConfig.join(", ")}`);
     if (missingConnectorConfig.length > 0) console.error(`Missing connector configuration: ${missingConnectorConfig.join(", ")}`);
     process.exitCode = 1;
