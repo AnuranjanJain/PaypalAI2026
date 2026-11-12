@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret, encryptSecret, hashOpaqueValue } from "@/lib/connectors/security";
 import { exchangeFigmaCode, getFigmaAccount } from "@/lib/connectors/figma";
-import { exchangeGitHubCode, exchangeGitHubInstallation, getGitHubAccount, getGitHubInstallationAccount } from "@/lib/connectors/github";
+import { exchangeGitHubCode, getGitHubAccount } from "@/lib/connectors/github";
 import { isConnectorProvider } from "@/lib/connectors/types";
 
 function callbackError(request: Request, returnPath: string | null, message: string) {
@@ -37,16 +37,12 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     let expiresAt: string | null;
     let scopes: string[];
     if (provider === "github") {
-      if (installationId && process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_SLUG) {
-        const token = await exchangeGitHubInstallation(installationId);
-        const account = await getGitHubInstallationAccount(installationId);
-        externalAccountId = installationId; externalAccountName = account.login; accessToken = token.accessToken; refreshToken = null; expiresAt = token.expiresAt; scopes = ["metadata:read", "contents:read", "pull_requests:read", "actions:read", "administration:write"];
-      } else {
-        if (!code) return callbackError(request, oauthState.return_path, "authorization_failed");
-        const token = await exchangeGitHubCode(code, verifier);
-        const account = await getGitHubAccount(token.accessToken);
-        externalAccountId = account.id; externalAccountName = account.login; accessToken = token.accessToken; refreshToken = token.refreshToken; expiresAt = token.expiresAt; scopes = token.scopes;
-      }
+      // A GitHub App setup callback only supplies installation_id. Without a
+      // user access token, that id is spoofable and cannot establish ownership.
+      if (!code) return callbackError(request, oauthState.return_path, installationId ? "github_app_installation_verification_unavailable" : "authorization_failed");
+      const token = await exchangeGitHubCode(code, verifier);
+      const account = await getGitHubAccount(token.accessToken);
+      externalAccountId = account.id; externalAccountName = account.login; accessToken = token.accessToken; refreshToken = token.refreshToken; expiresAt = token.expiresAt; scopes = token.scopes;
     } else {
       if (!code) return callbackError(request, oauthState.return_path, "authorization_failed");
       const token = await exchangeFigmaCode(code, verifier);

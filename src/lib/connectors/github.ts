@@ -38,10 +38,6 @@ function clientSecret(): string {
   return value;
 }
 
-function appSlug(): string | null {
-  return process.env.GITHUB_APP_SLUG?.trim() || null;
-}
-
 function appId(): string | null {
   return process.env.GITHUB_APP_ID?.trim() || null;
 }
@@ -74,12 +70,6 @@ export function githubCallbackUrl(): string {
 }
 
 export function githubAuthorizationUrl(state: string, verifier: string): string {
-  const slug = appSlug();
-  if (slug && appId() && appPrivateKey()) {
-    const url = new URL(`https://github.com/apps/${encodeURIComponent(slug)}/installations/new`);
-    url.searchParams.set("state", state);
-    return url.toString();
-  }
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", clientId());
   url.searchParams.set("redirect_uri", githubCallbackUrl());

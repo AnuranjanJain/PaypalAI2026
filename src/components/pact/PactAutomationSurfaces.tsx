@@ -6,6 +6,7 @@ import styles from "./PactAutomationSurfaces.module.css";
 export type ConnectorId = "github" | "figma";
 export type ConnectorState = "connected" | "needs_auth" | "error" | "not_configured";
 export type ConnectorActionState = { status: "loading" | "success" | "error"; message: string };
+type DecisionActionState = { status: "loading" | "error"; message: string };
 
 export type ConnectorResource = {
   id: string;
@@ -344,18 +345,37 @@ export function ExceptionInbox({
 }: {
   items: PactException[];
   onSelect?: (item: PactException) => void;
-  onAction?: (item: PactException) => void;
-  onReject?: (item: PactException) => void;
+  onAction?: (item: PactException) => Promise<void> | void;
+  onReject?: (item: PactException) => Promise<void> | void;
   emptyMessage?: string;
 }) {
   const [filter, setFilter] = useState<"open" | ExceptionCategory>("open");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [actionStates, setActionStates] = useState<Record<string, DecisionActionState>>({});
   const visibleItems = useMemo(() => filter === "open" ? items : items.filter((item) => item.category === filter), [filter, items]);
   const titleId = useId();
 
   function selectItem(item: PactException) {
     setSelectedId((current) => current === item.id ? null : item.id);
     onSelect?.(item);
+  }
+
+  async function runAction(item: PactException, action: (() => Promise<void> | void) | undefined) {
+    if (!action || actionStates[item.id]?.status === "loading") return;
+    setActionStates((current) => ({ ...current, [item.id]: { status: "loading", message: "Saving decision…" } }));
+    try {
+      await action();
+      setActionStates((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+    } catch (error) {
+      setActionStates((current) => ({
+        ...current,
+        [item.id]: { status: "error", message: error instanceof Error ? error.message : "This decision could not be saved." },
+      }));
+    }
   }
 
   return (
@@ -387,9 +407,10 @@ export function ExceptionInbox({
                 {isSelected && <div className={styles.exceptionDetail}>
                   <p>{item.detail}</p>
                   {(onAction || onReject) && <div className={styles.exceptionActions}>
-                    {onAction && item.actionId && <button type="button" className={styles.secondaryButton} onClick={() => onAction(item)}>{item.actionLabel ?? "Approve proposal"}</button>}
-                    {onReject && item.actionId && <button type="button" className={styles.textButton} onClick={() => onReject(item)}>Reject</button>}
+                    {onAction && item.actionId && <button type="button" className={styles.secondaryButton} disabled={actionStates[item.id]?.status === "loading"} onClick={() => runAction(item, () => onAction(item))}>{actionStates[item.id]?.status === "loading" ? "Saving…" : item.actionLabel ?? "Approve proposal"}</button>}
+                    {onReject && item.actionId && <button type="button" className={styles.textButton} disabled={actionStates[item.id]?.status === "loading"} onClick={() => runAction(item, () => onReject(item))}>Reject</button>}
                   </div>}
+                  {actionStates[item.id] && <p className={`${styles.actionStatus} ${styles[`action_${actionStates[item.id].status}`]}`} role={actionStates[item.id].status === "error" ? "alert" : "status"}>{actionStates[item.id].message}</p>}
                 </div>}
               </li>
             );
@@ -476,11 +497,12 @@ export function NegotiationPaymentState({
   terms?: NegotiationTerms;
   offers?: NegotiationOffer[];
   currentRole?: "owner" | "provider";
-  onOfferDecision?: (offer: NegotiationOffer, decision: "accepted" | "rejected") => void;
+  onOfferDecision?: (offer: NegotiationOffer, decision: "accepted" | "rejected") => Promise<void> | void;
   onPrimaryAction?: () => void;
   primaryActionLabel?: string;
 }) {
   const titleId = useId();
+  const [offerActionStates, setOfferActionStates] = useState<Record<string, DecisionActionState>>({});
   const currency = state.currency ?? "USD";
   const amount = formatAmount(state.amountCents, currency) ?? `${state.amountCents} ${currency}`;
   const gates: Array<{ key: "policy" | "owner" | "buyer" | "capture" | "payout"; label: string; detail: string }> = [
@@ -490,6 +512,24 @@ export function NegotiationPaymentState({
     { key: "capture", label: "Capture", detail: "Approved milestone amount" },
     { key: "payout", label: "Provider payout", detail: "Separate PayPal Payouts state" },
   ];
+
+  async function runOfferDecision(offer: NegotiationOffer, decision: "accepted" | "rejected") {
+    if (!onOfferDecision || offerActionStates[offer.id]?.status === "loading") return;
+    setOfferActionStates((current) => ({ ...current, [offer.id]: { status: "loading", message: "Saving decision…" } }));
+    try {
+      await onOfferDecision(offer, decision);
+      setOfferActionStates((current) => {
+        const next = { ...current };
+        delete next[offer.id];
+        return next;
+      });
+    } catch (error) {
+      setOfferActionStates((current) => ({
+        ...current,
+        [offer.id]: { status: "error", message: error instanceof Error ? error.message : "This offer decision could not be saved." },
+      }));
+    }
+  }
   return (
     <section className={styles.panel} aria-labelledby={`${titleId}-title`}>
       <div className={styles.panelHeader}>
@@ -531,9 +571,10 @@ export function NegotiationPaymentState({
               <p className={styles.offerRationale}>{offer.rationale}</p>
               {offer.createdAt && <small className={styles.offerTimestamp}>{offer.createdAt}</small>}
               {canDecide && <div className={styles.offerActions}>
-                <button type="button" className={styles.secondaryButton} onClick={() => onOfferDecision?.(offer, "accepted")}>{offer.ownerAccepted || offer.providerAccepted ? "Confirm offer" : "Accept offer"}</button>
-                <button type="button" className={styles.textButton} onClick={() => onOfferDecision?.(offer, "rejected")}>Reject</button>
+                <button type="button" className={styles.secondaryButton} disabled={offerActionStates[offer.id]?.status === "loading"} onClick={() => runOfferDecision(offer, "accepted")}>{offerActionStates[offer.id]?.status === "loading" ? "Saving…" : offer.ownerAccepted || offer.providerAccepted ? "Confirm offer" : "Accept offer"}</button>
+                <button type="button" className={styles.textButton} disabled={offerActionStates[offer.id]?.status === "loading"} onClick={() => runOfferDecision(offer, "rejected")}>Reject</button>
               </div>}
+              {offerActionStates[offer.id] && <p className={`${styles.actionStatus} ${styles[`action_${offerActionStates[offer.id].status}`]}`} role={offerActionStates[offer.id].status === "error" ? "alert" : "status"}>{offerActionStates[offer.id].message}</p>}
               {offer.status === "accepted" && <p className={styles.offerGate} role="status">Both participants accepted. Pact terms still require explicit agreement handling before payment changes.</p>}
             </li>;
           })}
@@ -584,15 +625,15 @@ export function PactAutomationSurfaces({
   terms?: NegotiationTerms;
   negotiationOffers?: NegotiationOffer[];
   currentRole?: "owner" | "provider";
-  onOfferDecision?: (offer: NegotiationOffer, decision: "accepted" | "rejected") => void;
+  onOfferDecision?: (offer: NegotiationOffer, decision: "accepted" | "rejected") => Promise<void> | void;
   onConfigureConnector?: (connector: Connector) => void;
-  onResourceSelect?: (connector: Connector, resourceId: string) => void;
-  onResourceDiscover?: (connector: Connector, discovery: ConnectorDiscovery) => void;
+  onResourceSelect?: (connector: Connector, resourceId: string) => Promise<void> | void;
+  onResourceDiscover?: (connector: Connector, discovery: ConnectorDiscovery) => Promise<void> | void;
   milestones?: ConnectorMilestone[];
-  onMilestoneSourceSelect?: (connector: Connector, milestoneId: string, scope: ConnectorScope) => void;
-  onExceptionAction?: (item: PactException) => void;
-  onExceptionReject?: (item: PactException) => void;
-  onPaymentAction?: () => void;
+  onMilestoneSourceSelect?: (connector: Connector, milestoneId: string, scope: ConnectorScope) => Promise<void> | void;
+  onExceptionAction?: (item: PactException) => Promise<void> | void;
+  onExceptionReject?: (item: PactException) => Promise<void> | void;
+  onPaymentAction?: () => Promise<void> | void;
   paymentActionLabel?: string;
   footer?: ReactNode;
 }) {

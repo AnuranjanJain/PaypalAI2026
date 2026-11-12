@@ -24,15 +24,30 @@ const secretGroups = [
 ];
 const has = (name) => Boolean(String(env[name] ?? "").trim());
 const connectorChecks = [
-  { label: "GitHub OAuth or App", ready: (has("GITHUB_CLIENT_ID") && has("GITHUB_CLIENT_SECRET")) || (has("GITHUB_APP_ID") && has("GITHUB_APP_SLUG") && has("GITHUB_APP_PRIVATE_KEY")) },
+  { label: "GitHub OAuth", ready: has("GITHUB_CLIENT_ID") && has("GITHUB_CLIENT_SECRET") },
   { label: "Figma OAuth", ready: has("FIGMA_CLIENT_ID") && has("FIGMA_CLIENT_SECRET") },
   { label: "PAYPAL_WEBHOOK_ID", ready: has("PAYPAL_WEBHOOK_ID") },
 ];
 const missingConfig = secretGroups.filter((group) => !group.some(has)).map((group) => group.join(" or "));
+const appUrlReady = (() => {
+  const value = String(env.APP_URL ?? "").trim();
+  try {
+    const parsed = new URL(value);
+    return ["http:", "https:"].includes(parsed.protocol)
+      && !parsed.username
+      && !parsed.password
+      && !parsed.search
+      && !parsed.hash;
+  } catch {
+    return false;
+  }
+})();
+if (!appUrlReady) missingConfig.push("APP_URL (absolute origin)");
 console.log("PayPal Pact server configuration:");
 for (const group of secretGroups) {
   console.log(`${group.join(" or ")}: ${group.some(has) ? "set" : "missing"}`);
 }
+console.log(`APP_URL: ${appUrlReady ? "set" : "missing or invalid"}`);
 for (const check of connectorChecks) console.log(`${check.label}: ${check.ready ? "set" : "missing"}`);
 const missingConnectorConfig = connectorChecks.filter((check) => !check.ready).map((check) => check.label);
 if (!baseUrl || !key) {

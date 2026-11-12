@@ -143,7 +143,9 @@ export default function PactAutomationClient({
 }) {
   const router = useRouter();
   const [resourceLists, setResourceLists] = useState<Record<string, ConnectorResource[]>>({});
-  const [connectorActions, setConnectorActions] = useState<Record<string, ConnectorActionState>>({});
+  const [connectorActions, setConnectorActions] = useState<Record<string, ConnectorActionState>>(() => Object.fromEntries(
+    connections.filter((connection) => connection.status !== "disconnected").map((connection) => [connection.id, { status: "loading", message: "Loading resources…" }]),
+  ));
   function setConnectorAction(connectionId: string, actionState: ConnectorActionState) {
     setConnectorActions((current) => ({ ...current, [connectionId]: actionState }));
   }
@@ -152,9 +154,20 @@ export default function PactAutomationClient({
     for (const connection of connections) {
       if (connection.status === "disconnected") continue;
       fetch(`/api/connectors/${connection.provider}/${connection.id}/resource`)
-        .then((response) => response.ok ? response.json() as Promise<{ resources?: ConnectorResource[] }> : null)
-        .then((payload) => { if (active && payload?.resources) setResourceLists((current) => ({ ...current, [connection.id]: payload.resources ?? [] })); })
-        .catch(() => undefined);
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({})) as { resources?: ConnectorResource[]; error?: string };
+          if (!response.ok) throw new Error(payload.error ?? "Resources could not be loaded.");
+          if (!active) return;
+          setResourceLists((current) => ({ ...current, [connection.id]: payload.resources ?? [] }));
+          setConnectorAction(connection.id, {
+            status: "success",
+            message: payload.resources?.length ? `${payload.resources.length} resource${payload.resources.length === 1 ? "" : "s"} loaded.` : "No private resources found. Enter a resource key to attach one manually.",
+          });
+        })
+        .catch((error) => {
+          if (!active) return;
+          setConnectorAction(connection.id, { status: "error", message: error instanceof Error ? error.message : "Resources could not be loaded." });
+        });
     }
     return () => { active = false; };
   }, [connections]);
@@ -291,7 +304,7 @@ export default function PactAutomationClient({
     }
   }
 
-  async function decideException(item: PactException, decision: "approved" | "rejected") {
+  async function decideException(item: PactException, decision: "approved" | "rejected"): Promise<void> {
     if (!item.actionId) return;
     if (item.actionId.startsWith("dispute-")) {
       const disputeId = item.actionId.slice("dispute-".length);
@@ -302,20 +315,32 @@ export default function PactAutomationClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disputeId, status: decision === "approved" ? "resolved" : "dismissed", resolutionType: "owner_review", resolutionNote }),
       });
-      if (response.ok) router.refresh();
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error ?? "The dispute decision could not be saved.");
+      }
+      router.refresh();
       return;
     }
     const response = await fetch("/api/agents/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actionId: item.actionId, decision }) });
-    if (response.ok) router.refresh();
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error ?? "The proposal decision could not be saved.");
+    }
+    router.refresh();
   }
 
-  async function decideOffer(offer: NegotiationOffer, decision: "accepted" | "rejected") {
+  async function decideOffer(offer: NegotiationOffer, decision: "accepted" | "rejected"): Promise<void> {
     const response = await fetch(`/api/pact/negotiation/offers/${offer.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision }),
     });
-    if (response.ok) router.refresh();
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error ?? "The offer decision could not be saved.");
+    }
+    router.refresh();
   }
 
   const milestoneOptions: ConnectorMilestone[] = milestones.map((milestone) => ({ id: milestone.id, title: milestone.title, sourceConnectionId: sourceMappings.find((mapping) => mapping.milestone_id === milestone.id && mapping.enabled)?.connection_id ?? null }));
